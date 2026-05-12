@@ -1,230 +1,247 @@
-import { useRef } from "react";
+import React, { useRef, useEffect } from "react";
+import HTMLFlipBook from "react-pageflip";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { toDriveImage } from "@/lib/driveUtils";
 
-function BookPage({ project, category, index, total, scrollYProgress, isCover, coverImage, profile }) {
-  // Each page owns a slice of the scroll progress: [i/N, (i+1)/N]
-  const start = index / total;
-  const end = (index + 1) / total;
-  // tiny lead-in so the flip feels eased
-  const rotateY = useTransform(scrollYProgress, [start, end], [0, -180]);
-  const shadowOpacity = useTransform(scrollYProgress, [start, (start + end) / 2, end], [0.25, 0.55, 0.15]);
+/* ------------------------------------------------------------------
+ *  Page components — each MUST be a forwardRef component for
+ *  react-pageflip to attach its internal refs.
+ *  ------------------------------------------------------------------ */
 
-  const thumb = !isCover ? toDriveImage(project?.thumbnail_url || project?.media_url) : "";
+const PageWrapper = React.forwardRef(({ children, className = "", testId }, ref) => (
+  <div
+    ref={ref}
+    data-testid={testId}
+    className={`relative w-full h-full bg-white border border-[#0A0B10] overflow-hidden ${className}`}
+    style={{ backgroundColor: "#fff" }}
+  >
+    {children}
+  </div>
+));
+PageWrapper.displayName = "PageWrapper";
 
-  return (
-    <motion.div
-      style={{
-        rotateY,
-        transformOrigin: "left center",
-        transformStyle: "preserve-3d",
-        zIndex: total - index,
-        boxShadow: "none",
-      }}
-      className="absolute inset-0"
-    >
-      {/* FRONT face */}
-      <div
-        style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
-        className="absolute inset-0 bg-white border border-[#0A0B10] overflow-hidden"
-      >
-        {isCover ? (
-          // ===== COVER PAGE =====
-          <div className="relative w-full h-full">
-            {coverImage ? (
-              <img
-                src={coverImage}
-                alt="Sketchbook cover"
-                className="absolute inset-0 w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="absolute inset-0 bg-[#0A0B10]" />
-            )}
-            {/* Dark gradient for legibility */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/20 to-transparent" />
-            {/* Inner spine shadow */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 bottom-0 w-20 pointer-events-none bg-gradient-to-r from-black/30 via-black/10 to-black/30" />
+const CoverPage = React.forwardRef(({ profile, coverImage, totalProjects }, ref) => (
+  <PageWrapper ref={ref} testId="book-cover">
+    {coverImage ? (
+      <img
+        src={coverImage}
+        alt="Sketchbook cover"
+        className="absolute inset-0 w-full h-full object-cover"
+        referrerPolicy="no-referrer"
+      />
+    ) : (
+      <div className="absolute inset-0 bg-[#0A0B10]" />
+    )}
+    {/* Legibility gradient */}
+    <div className="absolute inset-0 bg-gradient-to-tr from-black/75 via-black/25 to-transparent" />
+    {/* Paper texture on top of image for slight realism */}
+    <div className="absolute inset-0 mix-blend-overlay opacity-10 pointer-events-none"
+         style={{
+           backgroundImage:
+             "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+         }}
+    />
 
-            {/* Title overlay */}
-            <div className="absolute inset-0 flex flex-col justify-between p-10 lg:p-16 text-white">
-              <div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] tracking-[0.3em] uppercase text-white/80">
-                    The Sketchbook
-                  </span>
-                  <span className="w-8 h-px bg-white/60" />
-                  <span className="text-[10px] tracking-[0.3em] uppercase text-white/80">
-                    Vol. {new Date().getFullYear()}
-                  </span>
-                </div>
-                <h2 className="font-display font-black uppercase text-5xl lg:text-7xl tracking-tighter leading-[0.9] mt-6 max-w-2xl drop-shadow-lg">
-                  Selected<br />
-                  <span className="text-[#FF3333]">works</span><br />
-                  by hand.
-                </h2>
-              </div>
-
-              <div className="flex items-end justify-between">
-                <div>
-                  <div className="text-[10px] tracking-[0.3em] uppercase text-white/70">By</div>
-                  <div className="font-display font-bold text-2xl tracking-tight mt-1">
-                    {profile?.name || "Suzanne Cherian"}
-                  </div>
-                  <div className="text-xs text-white/60 mt-1">{profile?.location}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] tracking-[0.3em] uppercase text-white/70">
-                    {total - 1} pages
-                  </div>
-                  <div className="text-[10px] tracking-[0.3em] uppercase text-white/70 mt-1">
-                    ↳ scroll to open
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          // ===== PROJECT PAGE =====
-          <div className="absolute inset-0 flex">
-            {/* Left: image */}
-            <div className="w-1/2 h-full bg-[#F4F5F8] relative overflow-hidden">
-              {thumb ? (
-                <img
-                  src={thumb}
-                  alt={project.title}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="flex items-center justify-center w-full h-full text-neutral-300 font-display text-2xl">
-                  {project.title}
-                </div>
-              )}
-              <div className="absolute top-0 right-0 bottom-0 w-12 pointer-events-none bg-gradient-to-l from-black/15 to-transparent" />
-            </div>
-
-            {/* Right: text */}
-            <div className="w-1/2 h-full p-8 lg:p-12 flex flex-col justify-between bg-white relative">
-              <div className="absolute top-0 left-0 bottom-0 w-12 pointer-events-none bg-gradient-to-r from-black/10 to-transparent" />
-
-              <div className="relative">
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] tracking-[0.3em] uppercase text-[#FF3333]">
-                    {category?.name || "Work"}
-                  </span>
-                  {project.year && (
-                    <>
-                      <span className="w-6 h-px bg-neutral-300" />
-                      <span className="text-[10px] tracking-[0.3em] uppercase text-neutral-500">
-                        {project.year}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <h3 className="font-display font-black uppercase text-3xl lg:text-5xl tracking-tighter leading-[0.95] mt-5">
-                  {project.title}
-                </h3>
-                {project.short_description && (
-                  <p className="text-sm lg:text-base text-neutral-700 leading-relaxed mt-6 max-w-md">
-                    {project.short_description}
-                  </p>
-                )}
-                {project.client && (
-                  <div className="mt-6 text-[10px] tracking-[0.3em] uppercase text-neutral-500">
-                    Client · <span className="text-neutral-800 normal-case tracking-normal text-sm">{project.client}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="relative flex items-end justify-between">
-                <div className="font-display font-black text-7xl lg:text-8xl tracking-tighter text-[#F4F5F8] leading-none select-none">
-                  {String(index).padStart(2, "0")}
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] tracking-[0.3em] uppercase text-neutral-400">
-                    Page {String(index).padStart(2, "0")} / {String(total - 1).padStart(2, "0")}
-                  </div>
-                  <div className="mt-1 text-[10px] tracking-[0.3em] uppercase text-neutral-400">
-                    ↳ scroll to turn
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Drop shadow during flip */}
-        <motion.div
-          style={{ opacity: shadowOpacity }}
-          className="absolute inset-y-0 right-0 w-1/2 pointer-events-none bg-gradient-to-l from-black/30 via-transparent to-transparent"
-          aria-hidden
-        />
-      </div>
-
-      {/* BACK face — visible during the flip */}
-      <div
-        style={{
-          backfaceVisibility: "hidden",
-          WebkitBackfaceVisibility: "hidden",
-          transform: "rotateY(180deg)",
-        }}
-        className="absolute inset-0 border border-[#0A0B10] overflow-hidden"
-      >
-        <div className="absolute inset-0 bg-[#F4F5F8]" />
-        <div
-          className="absolute inset-0 opacity-[0.08]"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(0deg, #0A0B10 0, #0A0B10 1px, transparent 1px, transparent 28px)",
-          }}
-        />
-        <div className="absolute inset-0 grain" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-display font-black uppercase text-2xl tracking-tighter text-neutral-400">
-            {profile?.name || "Suzanne Cherian"}
-          </span>
-          <span className="text-[10px] tracking-[0.3em] uppercase text-neutral-400 mt-2">
-            Sketchbook · {new Date().getFullYear()}
+    {/* Title overlay */}
+    <div className="absolute inset-0 flex flex-col justify-between p-8 lg:p-12 text-white">
+      <div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] tracking-[0.3em] uppercase text-white/80">The Sketchbook</span>
+          <span className="w-8 h-px bg-white/60" />
+          <span className="text-[10px] tracking-[0.3em] uppercase text-white/80">
+            Vol. {new Date().getFullYear()}
           </span>
         </div>
+        <h2 className="font-display font-black uppercase text-4xl lg:text-6xl tracking-tighter leading-[0.9] mt-6 drop-shadow-lg">
+          Selected<br />
+          <span className="text-[#FF3333]">works</span><br />
+          by hand.
+        </h2>
       </div>
-    </motion.div>
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="text-[10px] tracking-[0.3em] uppercase text-white/70">By</div>
+          <div className="font-display font-bold text-xl tracking-tight mt-1">
+            {profile?.name || "Suzanne Cherian"}
+          </div>
+          <div className="text-xs text-white/60 mt-1">{profile?.location}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] tracking-[0.3em] uppercase text-white/70">
+            {totalProjects} {totalProjects === 1 ? "page" : "pages"}
+          </div>
+          <div className="text-[10px] tracking-[0.3em] uppercase text-white/70 mt-1">
+            ↳ scroll to open
+          </div>
+        </div>
+      </div>
+    </div>
+  </PageWrapper>
+));
+CoverPage.displayName = "CoverPage";
+
+const ImagePage = React.forwardRef(({ project }, ref) => {
+  const thumb = toDriveImage(project.thumbnail_url || project.media_url);
+  return (
+    <PageWrapper ref={ref} testId={`book-image-${project.id}`}>
+      <div className="absolute inset-0 bg-[#F4F5F8]">
+        {thumb ? (
+          <img
+            src={thumb}
+            alt={project.title}
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="flex items-center justify-center w-full h-full text-neutral-300 font-display text-2xl px-6 text-center">
+            {project.title}
+          </div>
+        )}
+      </div>
+      {/* Inner spine shadow on the right edge */}
+      <div className="absolute top-0 right-0 bottom-0 w-10 pointer-events-none bg-gradient-to-l from-black/20 to-transparent" />
+    </PageWrapper>
   );
-}
+});
+ImagePage.displayName = "ImagePage";
+
+const TextPage = React.forwardRef(({ project, category, index, totalProjects, profile }, ref) => (
+  <PageWrapper ref={ref} testId={`book-text-${project.id}`}>
+    <div className="absolute inset-0 p-8 lg:p-10 flex flex-col justify-between bg-white">
+      {/* Inner spine shadow on left edge */}
+      <div className="absolute top-0 left-0 bottom-0 w-10 pointer-events-none bg-gradient-to-r from-black/15 to-transparent" />
+
+      <div className="relative">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[10px] tracking-[0.3em] uppercase text-[#FF3333]">
+            {category?.name || "Work"}
+          </span>
+          {project.year && (
+            <>
+              <span className="w-6 h-px bg-neutral-300" />
+              <span className="text-[10px] tracking-[0.3em] uppercase text-neutral-500">
+                {project.year}
+              </span>
+            </>
+          )}
+        </div>
+        <h3 className="font-display font-black uppercase text-3xl lg:text-4xl tracking-tighter leading-[0.95] mt-5">
+          {project.title}
+        </h3>
+        {project.short_description && (
+          <p className="text-sm text-neutral-700 leading-relaxed mt-5">
+            {project.short_description}
+          </p>
+        )}
+        {project.client && (
+          <div className="mt-5 text-[10px] tracking-[0.3em] uppercase text-neutral-500">
+            Client · <span className="text-neutral-800 normal-case tracking-normal text-sm">{project.client}</span>
+          </div>
+        )}
+        {project.tools?.length > 0 && (
+          <div className="mt-2 text-[10px] tracking-[0.3em] uppercase text-neutral-500">
+            Tools · <span className="text-neutral-800 normal-case tracking-normal text-sm">{project.tools.join(", ")}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="relative flex items-end justify-between mt-6">
+        <div className="font-display font-black text-6xl lg:text-7xl tracking-tighter text-[#F4F5F8] leading-none select-none">
+          {String(index).padStart(2, "0")}
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] tracking-[0.3em] uppercase text-neutral-400">
+            Page {String(index).padStart(2, "0")} / {String(totalProjects).padStart(2, "0")}
+          </div>
+          <div className="mt-1 text-[10px] tracking-[0.3em] uppercase text-neutral-400">
+            {profile?.name?.split(" ")[0] || "Suzanne"}
+          </div>
+        </div>
+      </div>
+    </div>
+  </PageWrapper>
+));
+TextPage.displayName = "TextPage";
+
+const BackCover = React.forwardRef(({ profile }, ref) => (
+  <PageWrapper ref={ref} testId="book-back-cover" className="bg-[#0A0B10]">
+    <div className="absolute inset-0 bg-[#0A0B10]" />
+    <div className="absolute inset-0 grain opacity-30" />
+    <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-10">
+      <span className="text-[10px] tracking-[0.3em] uppercase text-white/60">— end —</span>
+      <h3 className="font-display font-black uppercase text-3xl lg:text-4xl tracking-tighter mt-4 text-center">
+        Thank you<br />for reading.
+      </h3>
+      <div className="mt-8 text-center">
+        <div className="text-xs tracking-wider uppercase text-white/60">More work at</div>
+        <div className="font-display font-bold text-xl tracking-tight mt-1">
+          {profile?.name || "Suzanne Cherian"}
+        </div>
+        <a href="#contact" className="inline-block mt-4 text-[10px] tracking-[0.3em] uppercase border border-white/40 px-4 py-2 hover:bg-white hover:text-[#0A0B10] transition-colors">
+          Get in touch →
+        </a>
+      </div>
+    </div>
+  </PageWrapper>
+));
+BackCover.displayName = "BackCover";
+
+/* ------------------------------------------------------------------ */
 
 export default function BookFlip({ projects, categories, profile }) {
-  const ref = useRef(null);
+  const sectionRef = useRef(null);
+  const bookRef = useRef(null);
+
   const { scrollYProgress } = useScroll({
-    target: ref,
+    target: sectionRef,
     offset: ["start start", "end end"],
   });
 
-  // Sort newest first; cap at 8 to keep scroll length sane
+  // Sort newest first, cap at 8
   const projectPages = [...projects]
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
     .slice(0, 8);
 
-  // Compose cover + project pages. Cover is index 0, projects start at 1.
-  const totalPages = projectPages.length + 1;
-  // section height: one screen per page + an extra to land the last page
-  const heightVh = (totalPages + 1) * 100;
+  // book pages = cover + 2*projects + back cover
+  const numProjects = projectPages.length;
+  const numSpreads = numProjects + 1; // cover + one spread per project
+  const heightVh = (numSpreads + 1.2) * 100;
 
-  // Global progress bar
-  const progressScale = useTransform(scrollYProgress, [0, 1], [0, 1]);
-
-  // Backend-served cover image URL (made absolute via REACT_APP_BACKEND_URL)
+  // Backend cover image URL (absolute)
   const coverPath = profile?.sketchbook_cover_url || "";
   const coverImage = coverPath
     ? (coverPath.startsWith("http") ? coverPath : `${process.env.REACT_APP_BACKEND_URL}${coverPath}`)
     : "";
 
-  if (projectPages.length === 0) return null;
+  // Progress bar
+  const progressScale = useTransform(scrollYProgress, [0, 1], [0, 1]);
+
+  // Drive book.flip() from scroll position
+  useEffect(() => {
+    if (numProjects === 0) return undefined;
+    const unsubscribe = scrollYProgress.on("change", (v) => {
+      const flipper = bookRef.current?.pageFlip?.();
+      if (!flipper) return;
+      // Map progress to spread index. Each spread = one slice of scroll.
+      // cover is spread 0, project 1 is spread 1, etc.
+      const targetSpread = Math.min(numSpreads - 1, Math.max(0, Math.floor(v * numSpreads)));
+      // Convert spread index → left page index of that spread.
+      // Cover: page 0. Project N spread: left page = 1 + 2*(N-1) = 2N-1
+      const targetPage = targetSpread === 0 ? 0 : 2 * targetSpread - 1;
+      const current = flipper.getCurrentPageIndex();
+      if (current !== targetPage) {
+        try { flipper.flip(targetPage); } catch (_e) { /* ignore mid-anim */ }
+      }
+    });
+    return unsubscribe;
+  }, [scrollYProgress, numProjects, numSpreads]);
+
+  if (numProjects === 0) return null;
 
   return (
     <section
       id="sketchbook"
-      ref={ref}
+      ref={sectionRef}
       className="relative bg-[#F4F5F8] border-b border-[#E1E3E8]"
       style={{ height: `${heightVh}vh` }}
       data-testid="sketchbook-section"
@@ -242,7 +259,7 @@ export default function BookFlip({ projects, categories, profile }) {
             </div>
           </div>
           <div className="hidden sm:block text-[10px] tracking-[0.3em] uppercase text-neutral-500 text-right">
-            {projectPages.length} {projectPages.length === 1 ? "page" : "pages"}<br />
+            {numProjects} {numProjects === 1 ? "page" : "pages"}<br />
             scroll ↓ to flip
           </div>
         </div>
@@ -255,56 +272,50 @@ export default function BookFlip({ projects, categories, profile }) {
 
         {/* Book stage — desktop */}
         <div className="hidden lg:flex flex-1 items-center justify-center px-12">
-          <div
-            className="relative w-full max-w-[1100px] aspect-[16/10]"
-            style={{ perspective: "2400px" }}
+          <HTMLFlipBook
+            ref={bookRef}
+            width={500}
+            height={700}
+            size="fixed"
+            minWidth={400}
+            maxWidth={600}
+            minHeight={500}
+            maxHeight={900}
+            showCover={true}
+            drawShadow={true}
+            flippingTime={900}
+            maxShadowOpacity={0.6}
+            useMouseEvents={true}
+            mobileScrollSupport={false}
+            usePortrait={false}
+            startPage={0}
+            className="sketchbook-fb"
+            style={{ background: "transparent" }}
           >
-            {/* Base "left page" backdrop — what the user sees when no pages are flipped */}
-            <div className="absolute inset-0 border border-[#0A0B10] bg-white">
-              <div className="absolute inset-0 grain opacity-50" />
-              <div className="absolute inset-y-0 left-1/2 w-px bg-[#E1E3E8]" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-[10px] tracking-[0.3em] uppercase text-neutral-400">End of book</div>
-                  <div className="font-display font-black uppercase text-3xl tracking-tighter text-neutral-300 mt-2">
-                    — fin —
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Page 0 — cover (alone on right because of showCover) */}
+            <CoverPage profile={profile} coverImage={coverImage} totalProjects={numProjects} />
 
-            {/* Cover page (index 0) */}
-            <BookPage
-              isCover
-              coverImage={coverImage}
-              profile={profile}
-              index={0}
-              total={totalPages}
-              scrollYProgress={scrollYProgress}
-            />
-
-            {/* Project pages */}
-            {projectPages.map((p, i) => (
-              <BookPage
-                key={p.id}
+            {/* For each project: left page = image, right page = text */}
+            {projectPages.flatMap((p, i) => [
+              <ImagePage key={`${p.id}-img`} project={p} />,
+              <TextPage
+                key={`${p.id}-txt`}
                 project={p}
                 category={categories.find((c) => c.id === p.category_id)}
                 index={i + 1}
-                total={totalPages}
-                scrollYProgress={scrollYProgress}
+                totalProjects={numProjects}
                 profile={profile}
-              />
-            ))}
+              />,
+            ])}
 
-            {/* Spine */}
-            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[3px] bg-[#0A0B10] z-10 pointer-events-none" />
-          </div>
+            {/* Back cover */}
+            <BackCover profile={profile} />
+          </HTMLFlipBook>
         </div>
 
-        {/* Mobile fallback — simple stacked cards (the book metaphor breaks below lg) */}
+        {/* Mobile fallback */}
         <div className="lg:hidden flex-1 overflow-y-auto px-6 py-20">
           <div className="space-y-6 max-w-md mx-auto">
-            {/* Cover card */}
             {coverImage && (
               <div className="border border-[#0A0B10] overflow-hidden relative aspect-[4/3]">
                 <img src={coverImage} alt="Sketchbook cover" className="absolute inset-0 w-full h-full object-cover" />
@@ -347,7 +358,7 @@ export default function BookFlip({ projects, categories, profile }) {
                       <p className="text-sm text-neutral-700 mt-3">{p.short_description}</p>
                     )}
                     <div className="mt-4 text-[10px] tracking-[0.3em] uppercase text-neutral-400">
-                      Page {String(i + 1).padStart(2, "0")} / {String(projectPages.length).padStart(2, "0")}
+                      Page {String(i + 1).padStart(2, "0")} / {String(numProjects).padStart(2, "0")}
                     </div>
                   </div>
                 </div>
