@@ -103,7 +103,7 @@ export default function ProjectModal({ project, category, onClose }) {
           onClick={onClose}
           data-testid="modal-close"
           aria-label="Close"
-          className="absolute top-3 right-3 z-30 w-10 h-10 inline-flex items-center justify-center bg-[#0A0B10] text-white hover:bg-[#FF3333] transition-colors"
+          className="absolute top-3 right-3 z-30 w-10 h-10 inline-flex items-center justify-center bg-[#0A0B10] text-white hover:bg-[#7BC4C4] transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -118,7 +118,7 @@ export default function ProjectModal({ project, category, onClose }) {
           {project && (
             <div>
               {category && (
-                <span className="text-[11px] tracking-[0.3em] uppercase text-[#FF3333]">
+                <span className="text-[11px] tracking-[0.3em] uppercase text-[#7BC4C4]">
                   {category.name}
                 </span>
               )}
@@ -168,7 +168,7 @@ export default function ProjectModal({ project, category, onClose }) {
                   target="_blank"
                   rel="noreferrer"
                   data-testid="modal-external-link"
-                  className="inline-flex items-center gap-2 mt-10 bg-[#0A0B10] text-white px-5 py-3 text-[11px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors"
+                  className="inline-flex items-center gap-2 mt-10 bg-[#0A0B10] text-white px-5 py-3 text-[11px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors"
                 >
                   View live project <ExternalLink className="w-3.5 h-3.5" />
                 </a>

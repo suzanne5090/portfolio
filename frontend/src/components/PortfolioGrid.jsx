@@ -67,7 +67,7 @@ function ProjectCard({ project, category, index, onOpen }) {
 
         {/* Featured pill */}
         {project.featured && (
-          <span className="absolute top-3 right-3 bg-[#FF3333] text-white text-[9px] tracking-[0.25em] uppercase px-2 py-1">
+          <span className="absolute top-3 right-3 bg-[#7BC4C4] text-white text-[9px] tracking-[0.25em] uppercase px-2 py-1">
             ★
           </span>
         )}
@@ -92,7 +92,7 @@ function ProjectCard({ project, category, index, onOpen }) {
             rotate: hovered ? 0 : -25,
           }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-[#FF3333] text-white flex items-center justify-center"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-[#7BC4C4] text-white flex items-center justify-center"
         >
           <ArrowUpRight className="w-5 h-5" />
         </motion.div>
@@ -224,7 +224,7 @@ export default function PortfolioGrid({ categories, projects }) {
         {filtered.length > 0 && (
           <div className="mt-16 lg:mt-24 border-t border-[#E1E3E8] pt-6 flex items-center justify-between text-[11px] tracking-[0.3em] uppercase text-neutral-500">
             <span>
-              <span className="text-[#FF3333]">{filtered.length}</span> /{" "}
+              <span className="text-[#7BC4C4]">{filtered.length}</span> /{" "}
               {projects.length} projects shown
             </span>
             <span className="hidden sm:inline">Click any tile to expand →</span>
@@ -260,7 +260,7 @@ function FilterPill({ active, count, onClick, children, testid }) {
         />
       )}
       <span
-        className={`relative z-10 transition-colors ${active ? "text-white" : "text-[#0A0B10] hover:text-[#FF3333]"}`}
+        className={`relative z-10 transition-colors ${active ? "text-white" : "text-[#0A0B10] hover:text-[#7BC4C4]"}`}
       >
         {children} <span className="opacity-50">· {count}</span>
       </span>

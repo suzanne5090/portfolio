@@ -9,7 +9,7 @@ export default function Header({ profile }) {
       <div className="max-w-[1400px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
         <a href="#top" className="flex items-center gap-3 group" data-testid="logo-link">
           <span className="font-display font-black text-lg tracking-tighter">
-            SUZANNE<span className="text-[#FF3333]">.</span>
+            SUZANNE<span className="text-[#7BC4C4]">.</span>
           </span>
           <span className="hidden sm:inline-block text-[10px] tracking-[0.3em] uppercase text-neutral-500">
             studio · {profile.location?.split(",")[0]}
@@ -17,16 +17,16 @@ export default function Header({ profile }) {
         </a>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-          <a href="#about" className="hover:text-[#FF3333] transition-colors" data-testid="nav-about">About</a>
-          <a href="#sketchbook" className="hover:text-[#FF3333] transition-colors" data-testid="nav-sketchbook">Sketchbook</a>
-          <a href="#work" className="hover:text-[#FF3333] transition-colors" data-testid="nav-work">Work</a>
-          <a href="#contact" className="hover:text-[#FF3333] transition-colors" data-testid="nav-contact">Contact</a>
+          <a href="#about" className="hover:text-[#7BC4C4] transition-colors" data-testid="nav-about">About</a>
+          <a href="#sketchbook" className="hover:text-[#7BC4C4] transition-colors" data-testid="nav-sketchbook">Sketchbook</a>
+          <a href="#work" className="hover:text-[#7BC4C4] transition-colors" data-testid="nav-work">Work</a>
+          <a href="#contact" className="hover:text-[#7BC4C4] transition-colors" data-testid="nav-contact">Contact</a>
         </nav>
 
         <div className="flex items-center gap-3">
           {profile.available && (
-            <span className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 border border-[#FF3333] text-[#FF3333] text-[11px] tracking-[0.2em] uppercase">
-              <span className="w-1.5 h-1.5 bg-[#FF3333] pulse-dot rounded-full" />
+            <span className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 border border-[#7BC4C4] text-[#7BC4C4] text-[11px] tracking-[0.2em] uppercase">
+              <span className="w-1.5 h-1.5 bg-[#7BC4C4] pulse-dot rounded-full" />
               Available
             </span>
           )}

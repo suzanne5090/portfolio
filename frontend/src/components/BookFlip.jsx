@@ -54,7 +54,7 @@ const CoverPage = React.forwardRef(({ profile, coverImage, totalProjects, isMobi
         </div>
         <h2 className="font-display font-black uppercase text-4xl lg:text-6xl tracking-tighter leading-[0.9] mt-6 drop-shadow-lg">
           Selected<br />
-          <span className="text-[#FF3333]">works</span><br />
+          <span className="text-[#7BC4C4]">works</span><br />
           by hand.
         </h2>
       </div>
@@ -113,7 +113,7 @@ const TextPage = React.forwardRef(({ project, category, index, totalProjects, pr
 
       <div className="relative">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-[10px] tracking-[0.3em] uppercase text-[#FF3333]">
+          <span className="text-[10px] tracking-[0.3em] uppercase text-[#7BC4C4]">
             {category?.name || "Work"}
           </span>
           {project.year && (
@@ -312,7 +312,7 @@ export default function BookFlip({ projects, categories, profile }) {
               02 — Sketchbook
             </div>
             <div className="font-display font-black uppercase text-2xl sm:text-3xl tracking-tighter mt-1">
-              Latest <span className="text-[#FF3333]">pages.</span>
+              Latest <span className="text-[#7BC4C4]">pages.</span>
             </div>
           </div>
           <div className="hidden sm:block text-[10px] tracking-[0.3em] uppercase text-neutral-500 text-right">
@@ -325,7 +325,7 @@ export default function BookFlip({ projects, categories, profile }) {
         {!isMobile && (
           <motion.div
             style={{ scaleX: progressScale, transformOrigin: "0% 50%" }}
-            className="absolute top-0 left-0 right-0 h-[2px] bg-[#FF3333] z-30"
+            className="absolute top-0 left-0 right-0 h-[2px] bg-[#7BC4C4] z-30"
           />
         )}
 

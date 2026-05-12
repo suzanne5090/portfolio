@@ -78,13 +78,13 @@ export default function MessagesTab() {
                   <div>
                     <h4 className="font-display text-2xl tracking-tight">{open.subject}</h4>
                     <div className="text-sm text-neutral-500 mt-1">
-                      {open.name} · <a href={`mailto:${open.email}`} className="underline hover:text-[#FF3333]">{open.email}</a>
+                      {open.name} · <a href={`mailto:${open.email}`} className="underline hover:text-[#7BC4C4]">{open.email}</a>
                     </div>
                   </div>
                   <button
                     onClick={() => remove(open.id)}
                     data-testid={`delete-message-${open.id}`}
-                    className="p-2 border border-[#E1E3E8] hover:bg-[#FF3333] hover:text-white hover:border-[#FF3333] transition-colors"
+                    className="p-2 border border-[#E1E3E8] hover:bg-[#7BC4C4] hover:text-white hover:border-[#7BC4C4] transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -96,7 +96,7 @@ export default function MessagesTab() {
                 </div>
                 <a
                   href={`mailto:${open.email}?subject=Re: ${encodeURIComponent(open.subject)}`}
-                  className="mt-6 inline-flex items-center gap-2 bg-[#0A0B10] text-white px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors"
+                  className="mt-6 inline-flex items-center gap-2 bg-[#0A0B10] text-white px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors"
                   data-testid="reply-message-btn"
                 >
                   <Mail className="w-3.5 h-3.5" /> Reply via email

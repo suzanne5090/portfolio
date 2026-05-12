@@ -9,7 +9,7 @@
     --bg-secondary: #F4F5F8;
     --text-primary: #0A0B10;
     --text-secondary: #4B5563;
-    --accent: #FF3333;
+    --accent: #7BC4C4;
     --border: #E1E3E8;
     --success: #10B981;
     --error: #EF4444;
@@ -56,7 +56,7 @@ html, body {
         --secondary-foreground: 220 13% 5%;
         --muted: 220 14% 96%;
         --muted-foreground: 220 8% 40%;
-        --accent: 0 100% 60%;
+        --accent: 180 36% 63%;
         --accent-foreground: 0 0% 100%;
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 100%;

@@ -33,7 +33,7 @@ export default function ContactSection({ profile }) {
           </span>
           <h2 className="font-display font-black uppercase tracking-tighter text-5xl sm:text-6xl lg:text-7xl mt-4 leading-[0.92]">
             Let's make<br />
-            <span className="text-[#FF3333]">something</span><br />
+            <span className="text-[#7BC4C4]">something</span><br />
             together.
           </h2>
           <p className="text-neutral-400 mt-8 max-w-md leading-relaxed">
@@ -41,7 +41,7 @@ export default function ContactSection({ profile }) {
           </p>
           <div className="mt-10 space-y-2 text-sm">
             {profile.email && (
-              <a href={`mailto:${profile.email}`} className="block hover:text-[#FF3333] transition-colors">
+              <a href={`mailto:${profile.email}`} className="block hover:text-[#7BC4C4] transition-colors">
                 ↳ {profile.email}
               </a>
             )}
@@ -56,7 +56,7 @@ export default function ContactSection({ profile }) {
                 data-testid="contact-name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full bg-transparent border-b border-neutral-700 focus:border-[#FF3333] outline-none py-3 text-lg"
+                className="w-full bg-transparent border-b border-neutral-700 focus:border-[#7BC4C4] outline-none py-3 text-lg"
                 placeholder="Jane Doe"
               />
             </Field>
@@ -66,7 +66,7 @@ export default function ContactSection({ profile }) {
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full bg-transparent border-b border-neutral-700 focus:border-[#FF3333] outline-none py-3 text-lg"
+                className="w-full bg-transparent border-b border-neutral-700 focus:border-[#7BC4C4] outline-none py-3 text-lg"
                 placeholder="jane@studio.com"
               />
             </Field>
@@ -76,7 +76,7 @@ export default function ContactSection({ profile }) {
               data-testid="contact-subject"
               value={form.subject}
               onChange={(e) => setForm({ ...form, subject: e.target.value })}
-              className="w-full bg-transparent border-b border-neutral-700 focus:border-[#FF3333] outline-none py-3 text-lg"
+              className="w-full bg-transparent border-b border-neutral-700 focus:border-[#7BC4C4] outline-none py-3 text-lg"
               placeholder="Brand identity for…"
             />
           </Field>
@@ -86,7 +86,7 @@ export default function ContactSection({ profile }) {
               rows={5}
               value={form.message}
               onChange={(e) => setForm({ ...form, message: e.target.value })}
-              className="w-full bg-transparent border-b border-neutral-700 focus:border-[#FF3333] outline-none py-3 text-lg resize-none"
+              className="w-full bg-transparent border-b border-neutral-700 focus:border-[#7BC4C4] outline-none py-3 text-lg resize-none"
               placeholder="Tell me a bit about the project…"
             />
           </Field>
@@ -94,7 +94,7 @@ export default function ContactSection({ profile }) {
             type="submit"
             disabled={sending}
             data-testid="contact-submit"
-            className="inline-flex items-center gap-3 bg-[#FF3333] text-white px-8 py-4 text-[12px] tracking-[0.2em] uppercase hover:bg-white hover:text-[#0A0B10] transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-3 bg-[#7BC4C4] text-white px-8 py-4 text-[12px] tracking-[0.2em] uppercase hover:bg-white hover:text-[#0A0B10] transition-colors disabled:opacity-50"
           >
             {sending ? "Sending…" : "Send Message →"}
           </button>

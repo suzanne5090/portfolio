@@ -18,7 +18,7 @@ export default function AboutSection({ profile }) {
           className="col-span-12 lg:col-span-9"
         >
           <h2 className="font-display font-bold text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-[1.05] max-w-3xl">
-            I design with <span className="text-[#FF3333]">intent</span> — bold systems, expressive marks, and editorial precision.
+            I design with <span className="text-[#7BC4C4]">intent</span> — bold systems, expressive marks, and editorial precision.
           </h2>
           <div className="grid sm:grid-cols-2 gap-8 mt-10 max-w-3xl">
             <p className="text-base leading-relaxed text-neutral-700">{profile.bio}</p>
@@ -29,7 +29,7 @@ export default function AboutSection({ profile }) {
                 <span className="text-neutral-500 tracking-wider uppercase text-[11px]">Focus</span>
                 <span className="font-medium">Brand · Illustration · Web</span>
                 <span className="text-neutral-500 tracking-wider uppercase text-[11px]">Status</span>
-                <span className="font-medium text-[#FF3333]">
+                <span className="font-medium text-[#7BC4C4]">
                   {profile.available ? "Open for projects" : "Currently booked"}
                 </span>
                 {profile.behance_url && (
@@ -39,7 +39,7 @@ export default function AboutSection({ profile }) {
                       href={profile.behance_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium underline decoration-[#FF3333] underline-offset-4 hover:text-[#FF3333]"
+                      className="font-medium underline decoration-[#7BC4C4] underline-offset-4 hover:text-[#7BC4C4]"
                       data-testid="about-behance-link"
                     >
                       View profile →

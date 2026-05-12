@@ -111,14 +111,14 @@ export default function ProjectsTab() {
           onClick={startNew}
           data-testid="add-project-btn"
           disabled={categories.length === 0}
-          className="inline-flex items-center gap-2 bg-[#0A0B10] text-white px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-2 bg-[#0A0B10] text-white px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors disabled:opacity-50"
         >
           <Plus className="w-4 h-4" /> Add Project
         </button>
       </div>
 
       {categories.length === 0 && (
-        <div className="border border-[#FF3333] bg-[#FF3333]/5 p-4 text-sm mb-6">
+        <div className="border border-[#7BC4C4] bg-[#7BC4C4]/5 p-4 text-sm mb-6">
           Create a category first before adding projects.
         </div>
       )}
@@ -149,7 +149,7 @@ export default function ProjectsTab() {
                     </div>
                   )}
                   {p.featured && (
-                    <span className="absolute top-2 left-2 bg-[#FF3333] text-white text-[9px] tracking-[0.2em] uppercase px-2 py-1 inline-flex items-center gap-1">
+                    <span className="absolute top-2 left-2 bg-[#7BC4C4] text-white text-[9px] tracking-[0.2em] uppercase px-2 py-1 inline-flex items-center gap-1">
                       <Star className="w-3 h-3" /> Featured
                     </span>
                   )}
@@ -178,7 +178,7 @@ export default function ProjectsTab() {
                     <button
                       onClick={() => remove(p.id)}
                       data-testid={`delete-project-${p.id}`}
-                      className="p-2 border border-[#E1E3E8] hover:bg-[#FF3333] hover:text-white hover:border-[#FF3333] transition-colors"
+                      className="p-2 border border-[#E1E3E8] hover:bg-[#7BC4C4] hover:text-white hover:border-[#7BC4C4] transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -259,7 +259,7 @@ export default function ProjectsTab() {
                     checked={form.featured}
                     onChange={(e) => set("featured", e.target.checked)}
                     data-testid="proj-featured"
-                    className="w-4 h-4 accent-[#FF3333]"
+                    className="w-4 h-4 accent-[#7BC4C4]"
                   />
                   Featured
                 </label>
@@ -269,7 +269,7 @@ export default function ProjectsTab() {
                     checked={form.show_in_book !== false}
                     onChange={(e) => set("show_in_book", e.target.checked)}
                     data-testid="proj-show-in-book"
-                    className="w-4 h-4 accent-[#FF3333]"
+                    className="w-4 h-4 accent-[#7BC4C4]"
                   />
                   Include in Sketchbook
                 </label>
@@ -292,7 +292,7 @@ export default function ProjectsTab() {
               <button
                 onClick={save}
                 data-testid="project-form-save"
-                className="px-4 py-2.5 bg-[#0A0B10] text-white text-[11px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors"
+                className="px-4 py-2.5 bg-[#0A0B10] text-white text-[11px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors"
               >
                 Save Project
               </button>

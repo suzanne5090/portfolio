@@ -22,7 +22,7 @@ export default function Hero({ profile }) {
                 Portfolio · {new Date().getFullYear()}
               </span>
               <span className="w-8 h-px bg-neutral-300" />
-              <span className="text-[11px] tracking-[0.3em] uppercase text-[#FF3333]">
+              <span className="text-[11px] tracking-[0.3em] uppercase text-[#7BC4C4]">
                 {profile.location}
               </span>
             </motion.div>
@@ -34,9 +34,9 @@ export default function Hero({ profile }) {
               className="font-display font-black uppercase leading-[0.86] tracking-tighter text-[16vw] sm:text-[12vw] lg:text-[8.5vw]"
               data-testid="hero-title"
             >
-              {profile.name?.split(" ")[0] || "Suzanne"}
+              <span className="text-[#7BC4C4]">{profile.name?.split(" ")[0] || "Suzanne"}</span>
               <br />
-              <span className="text-[#FF3333]">{profile.name?.split(" ").slice(1).join(" ") || "Cherian"}</span>
+              <span className="text-[#0A0B10]">{profile.name?.split(" ").slice(1).join(" ") || "Cherian"}</span>
             </motion.h1>
 
             <motion.div
@@ -49,8 +49,8 @@ export default function Hero({ profile }) {
                 {profile.title}
               </span>
               {profile.available && (
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 border border-[#FF3333] text-[#FF3333] text-[11px] tracking-[0.2em] uppercase">
-                  <span className="w-1.5 h-1.5 bg-[#FF3333] pulse-dot rounded-full" />
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 border border-[#7BC4C4] text-[#7BC4C4] text-[11px] tracking-[0.2em] uppercase">
+                  <span className="w-1.5 h-1.5 bg-[#7BC4C4] pulse-dot rounded-full" />
                   Open for Freelance
                 </span>
               )}
@@ -75,7 +75,7 @@ export default function Hero({ profile }) {
               <a
                 href="#work"
                 data-testid="hero-cta-work"
-                className="group inline-flex items-center gap-3 bg-[#0A0B10] text-white px-6 py-4 text-[12px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors"
+                className="group inline-flex items-center gap-3 bg-[#0A0B10] text-white px-6 py-4 text-[12px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors"
               >
                 See the work
                 <ArrowDownRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:translate-y-0.5" />
@@ -129,7 +129,7 @@ export default function Hero({ profile }) {
                 )}
               </div>
               {/* corner badge */}
-              <div className="absolute -bottom-4 -left-4 bg-[#FF3333] text-white px-4 py-2 text-[10px] tracking-[0.3em] uppercase">
+              <div className="absolute -bottom-4 -left-4 bg-[#7BC4C4] text-white px-4 py-2 text-[10px] tracking-[0.3em] uppercase">
                 Designer · Illustrator
               </div>
             </motion.div>
@@ -143,13 +143,13 @@ export default function Hero({ profile }) {
           {Array.from({ length: 6 }).map((_, i) => (
             <span key={i} className="px-8 inline-flex items-center gap-8">
               <span>Brand Systems</span>
-              <span className="text-[#FF3333]">★</span>
+              <span className="text-[#7BC4C4]">★</span>
               <span>Illustration</span>
-              <span className="text-[#FF3333]">★</span>
+              <span className="text-[#7BC4C4]">★</span>
               <span>Editorial Design</span>
-              <span className="text-[#FF3333]">★</span>
+              <span className="text-[#7BC4C4]">★</span>
               <span>Visual Identity</span>
-              <span className="text-[#FF3333]">★</span>
+              <span className="text-[#7BC4C4]">★</span>
             </span>
           ))}
         </div>

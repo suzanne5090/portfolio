@@ -25,7 +25,7 @@ export default function AdminDashboard() {
         <div className="max-w-[1400px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="font-display font-black text-lg tracking-tighter">
-              SUZANNE<span className="text-[#FF3333]">.</span>
+              SUZANNE<span className="text-[#7BC4C4]">.</span>
             </Link>
             <span className="text-[10px] tracking-[0.3em] uppercase text-neutral-500 hidden sm:inline">
               Control Room
@@ -44,7 +44,7 @@ export default function AdminDashboard() {
             <button
               onClick={onLogout}
               data-testid="logout-btn"
-              className="inline-flex items-center gap-2 text-[11px] tracking-[0.2em] uppercase border border-neutral-300 px-3 py-1.5 hover:bg-[#FF3333] hover:text-white hover:border-[#FF3333] transition-colors"
+              className="inline-flex items-center gap-2 text-[11px] tracking-[0.2em] uppercase border border-neutral-300 px-3 py-1.5 hover:bg-[#7BC4C4] hover:text-white hover:border-[#7BC4C4] transition-colors"
             >
               <LogOut className="w-3.5 h-3.5" /> Logout
             </button>

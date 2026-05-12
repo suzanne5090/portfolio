@@ -67,7 +67,7 @@ export default function CategoriesTab() {
         <button
           onClick={startNew}
           data-testid="add-category-btn"
-          className="inline-flex items-center gap-2 bg-[#0A0B10] text-white px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors"
+          className="inline-flex items-center gap-2 bg-[#0A0B10] text-white px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors"
         >
           <Plus className="w-4 h-4" /> Add Category
         </button>
@@ -109,7 +109,7 @@ export default function CategoriesTab() {
                 <button
                   onClick={() => remove(c.id)}
                   data-testid={`delete-category-${c.id}`}
-                  className="p-2 border border-[#E1E3E8] hover:bg-[#FF3333] hover:text-white hover:border-[#FF3333] transition-colors"
+                  className="p-2 border border-[#E1E3E8] hover:bg-[#7BC4C4] hover:text-white hover:border-[#7BC4C4] transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -169,7 +169,7 @@ export default function CategoriesTab() {
               <button
                 onClick={save}
                 data-testid="category-form-save"
-                className="px-4 py-2.5 bg-[#0A0B10] text-white text-[11px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors"
+                className="px-4 py-2.5 bg-[#0A0B10] text-white text-[11px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors"
               >
                 Save
               </button>

@@ -69,7 +69,7 @@ export default function ProfileTab() {
             checked={profile.available}
             onChange={(e) => set("available", e.target.checked)}
             data-testid="profile-available"
-            className="w-4 h-4 accent-[#FF3333]"
+            className="w-4 h-4 accent-[#7BC4C4]"
           />
           <label htmlFor="avail" className="text-sm">Available for freelance</label>
         </div>
@@ -85,7 +85,7 @@ export default function ProfileTab() {
             onClick={onSave}
             disabled={saving}
             data-testid="profile-save"
-            className="bg-[#0A0B10] text-white px-6 py-3 text-[12px] tracking-[0.2em] uppercase hover:bg-[#FF3333] transition-colors disabled:opacity-50"
+            className="bg-[#0A0B10] text-white px-6 py-3 text-[12px] tracking-[0.2em] uppercase hover:bg-[#7BC4C4] transition-colors disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save profile →"}
           </button>
@@ -164,7 +164,7 @@ function SketchbookCoverPanel({ profile, onUpdate }) {
             onClick={regenerate}
             disabled={busy}
             data-testid="generate-cover-btn"
-            className="inline-flex items-center gap-2 bg-[#FF3333] text-white px-5 py-3 text-[11px] tracking-[0.2em] uppercase hover:bg-[#0A0B10] transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 bg-[#7BC4C4] text-white px-5 py-3 text-[11px] tracking-[0.2em] uppercase hover:bg-[#0A0B10] transition-colors disabled:opacity-50"
           >
             {busy ? "Generating… (~30–60s)" : "✦ Generate new cover"}
           </button>
