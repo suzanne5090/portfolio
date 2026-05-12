@@ -5,31 +5,29 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import json
 import logging
 import uuid
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
+import asyncpg
 import bcrypt
 import jwt
 import re
-import base64
 import requests
 import resend
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
 # ---------- Config ----------
-MONGO_URL = os.environ['MONGO_URL']
-DB_NAME = os.environ['DB_NAME']
+DATABASE_URL = os.environ['DATABASE_URL']
 JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
+ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@example.com').lower()
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
@@ -38,14 +36,19 @@ OWNER_EMAIL = os.environ.get('OWNER_EMAIL', ADMIN_EMAIL)
 
 resend.api_key = RESEND_API_KEY
 
-# ---------- DB ----------
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
+# ---------- DB Pool ----------
+pool: asyncpg.Pool = None
+
+async def get_pool() -> asyncpg.Pool:
+    return pool
 
 # ---------- App ----------
 app = FastAPI(title="Suzanne Cherian Portfolio API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # ---------- Models ----------
 class LoginRequest(BaseModel):
@@ -70,7 +73,7 @@ class Profile(BaseModel):
     available: bool = True
     profile_pic_url: str = ""
     tagline: str = "Crafting visual stories through design & illustration."
-    bio: str = "I'm Suzanne — a Bangalore-based graphic designer & illustrator. I help brands find their voice through bold typography, expressive illustrations, and editorial-grade layouts."
+    bio: str = "I'm Suzanne — a Bangalore-based graphic designer & illustrator."
     email: str = ""
     instagram_url: str = ""
     behance_url: str = ""
@@ -105,10 +108,10 @@ class Project(BaseModel):
     category_id: str
     description: str = ""
     short_description: str = ""
-    media_type: str = "image"  # image | video | behance | iframe
-    media_url: str = ""        # google drive / image link / behance project URL
-    behance_embed: str = ""    # full <iframe ...> snippet (optional)
-    thumbnail_url: str = ""    # used on the card grid
+    media_type: str = "image"
+    media_url: str = ""
+    behance_embed: str = ""
+    thumbnail_url: str = ""
     tools: List[str] = []
     year: str = ""
     client: str = ""
@@ -194,17 +197,36 @@ async def get_current_admin(credentials: Optional[HTTPAuthorizationCredentials] 
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-    if not user or user.get("role") != "admin":
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow("SELECT id, email, name, role FROM users WHERE id=$1", payload["sub"])
+    if not user or user["role"] != "admin":
         raise HTTPException(status_code=401, detail="User not found")
-    return user
+    return dict(user)
+
+
+# ---------- DB helpers ----------
+def _row_to_profile(row) -> Profile:
+    d = dict(row)
+    return Profile(**{k: (v if v is not None else "") for k, v in d.items() if k != "id"})
+
+def _row_to_project(row) -> Project:
+    d = dict(row)
+    d["tools"] = json.loads(d.get("tools") or "[]")
+    return Project(**d)
+
+def _row_to_category(row) -> Category:
+    return Category(**dict(row))
+
+def _row_to_message(row) -> ContactMessage:
+    return ContactMessage(**dict(row))
 
 
 # ---------- Routes: Auth ----------
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(payload: LoginRequest):
     email = payload.email.lower()
-    user = await db.users.find_one({"email": email})
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(user["id"], user["email"])
@@ -215,24 +237,45 @@ async def login(payload: LoginRequest):
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(current=Depends(get_current_admin)):
-    return UserOut(id=current["id"], email=current["email"], name=current["name"], role=current["role"])
+    return UserOut(**current)
 
 
 # ---------- Routes: Profile ----------
 @api_router.get("/profile", response_model=Profile)
 async def get_profile():
-    doc = await db.profile.find_one({"_id": "singleton"}, {"_id": 0})
-    if not doc:
-        default = Profile().model_dump()
-        await db.profile.insert_one({"_id": "singleton", **default})
-        return Profile(**default)
-    return Profile(**doc)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM profile WHERE id='singleton'")
+    if not row:
+        default = Profile()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO profile (id,name,title,location,available,profile_pic_url,tagline,bio,
+                  email,instagram_url,behance_url,linkedin_url,cv_url,sketchbook_cover_url,sketchbook_cover_prompt)
+                VALUES ('singleton',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                ON CONFLICT (id) DO NOTHING
+            """, default.name, default.title, default.location, default.available,
+                default.profile_pic_url, default.tagline, default.bio, default.email,
+                default.instagram_url, default.behance_url, default.linkedin_url,
+                default.cv_url, default.sketchbook_cover_url, default.sketchbook_cover_prompt)
+        return default
+    return _row_to_profile(row)
 
 @api_router.put("/profile", response_model=Profile)
 async def update_profile(payload: Profile, _=Depends(get_current_admin)):
-    data = payload.model_dump()
-    await db.profile.update_one({"_id": "singleton"}, {"$set": data}, upsert=True)
-    return Profile(**data)
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO profile (id,name,title,location,available,profile_pic_url,tagline,bio,
+              email,instagram_url,behance_url,linkedin_url,cv_url,sketchbook_cover_url,sketchbook_cover_prompt)
+            VALUES ('singleton',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            ON CONFLICT (id) DO UPDATE SET
+              name=$1,title=$2,location=$3,available=$4,profile_pic_url=$5,tagline=$6,bio=$7,
+              email=$8,instagram_url=$9,behance_url=$10,linkedin_url=$11,cv_url=$12,
+              sketchbook_cover_url=$13,sketchbook_cover_prompt=$14
+        """, payload.name, payload.title, payload.location, payload.available,
+            payload.profile_pic_url, payload.tagline, payload.bio, payload.email,
+            payload.instagram_url, payload.behance_url, payload.linkedin_url,
+            payload.cv_url, payload.sketchbook_cover_url, payload.sketchbook_cover_prompt)
+    return payload
 
 
 # ---------- Routes: Categories ----------
@@ -241,35 +284,44 @@ def _slugify(text: str) -> str:
 
 @api_router.get("/categories", response_model=List[Category])
 async def list_categories():
-    items = await db.categories.find({}, {"_id": 0}).sort("order", 1).to_list(500)
-    return [Category(**c) for c in items]
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('SELECT * FROM categories ORDER BY "order" ASC')
+    return [_row_to_category(r) for r in rows]
 
 @api_router.post("/categories", response_model=Category)
 async def create_category(payload: CategoryCreate, _=Depends(get_current_admin)):
     slug = payload.slug or _slugify(payload.name)
     cat = Category(name=payload.name, slug=slug, description=payload.description, order=payload.order)
-    await db.categories.insert_one(cat.model_dump())
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'INSERT INTO categories (id,name,slug,description,"order",created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+            cat.id, cat.name, cat.slug, cat.description, cat.order, cat.created_at
+        )
     return cat
 
 @api_router.put("/categories/{cat_id}", response_model=Category)
 async def update_category(cat_id: str, payload: CategoryUpdate, _=Depends(get_current_admin)):
-    existing = await db.categories.find_one({"id": cat_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Category not found")
-    update = {k: v for k, v in payload.model_dump().items() if v is not None}
-    if "name" in update and "slug" not in update:
-        update["slug"] = _slugify(update["name"])
-    await db.categories.update_one({"id": cat_id}, {"$set": update})
-    merged = {**existing, **update}
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow("SELECT * FROM categories WHERE id=$1", cat_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Category not found")
+        update = {k: v for k, v in payload.model_dump().items() if v is not None}
+        if "name" in update and "slug" not in update:
+            update["slug"] = _slugify(update["name"])
+        merged = {**dict(existing), **update}
+        await conn.execute(
+            'UPDATE categories SET name=$1,slug=$2,description=$3,"order"=$4 WHERE id=$5',
+            merged["name"], merged["slug"], merged["description"], merged["order"], cat_id
+        )
     return Category(**merged)
 
 @api_router.delete("/categories/{cat_id}")
 async def delete_category(cat_id: str, _=Depends(get_current_admin)):
-    res = await db.categories.delete_one({"id": cat_id})
-    if res.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Category not found")
-    # Also unset category on projects (we keep projects)
-    await db.projects.update_many({"category_id": cat_id}, {"$set": {"category_id": ""}})
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM categories WHERE id=$1", cat_id)
+        if result == "DELETE 0":
+            raise HTTPException(status_code=404, detail="Category not found")
+        await conn.execute("UPDATE projects SET category_id='' WHERE category_id=$1", cat_id)
     return {"ok": True}
 
 
@@ -286,7 +338,6 @@ def _extract_drive_id(url: str) -> Optional[str]:
 def _extract_behance_id(text: str) -> Optional[str]:
     if not text:
         return None
-    # Behance project IDs are 9-10 digit numbers in URLs like /gallery/244895461/ or /embed/project/244895461
     for pattern in (r"behance\.net/gallery/(\d{6,})", r"behance\.net/embed/project/(\d{6,})", r"behance\.net/embed/(\d{6,})"):
         m = re.search(pattern, text)
         if m:
@@ -294,32 +345,19 @@ def _extract_behance_id(text: str) -> Optional[str]:
     return None
 
 def _fetch_behance_thumbnail(project_id: str) -> str:
-    """Scrape the Behance embed page for the project cover image."""
     try:
         url = f"https://www.behance.net/embed/project/{project_id}"
-        r = requests.get(
-            url,
-            timeout=8,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            },
-        )
+        r = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         if r.status_code != 200:
             return ""
-        # Prefer the largest CDN image (max_808_webp), fall back to others
         candidates = re.findall(r"https://mir-s3-cdn-cf\.behance\.net/projects/[^\"'<>\s]+", r.text)
         if not candidates:
             return ""
-        # Order: max_808_webp > 808_webp > 404_webp > others
         def score(u):
-            if "max_808" in u:
-                return 4
-            if "/808" in u or "/810" in u:
-                return 3
-            if "/404" in u or "/400" in u:
-                return 2
-            if "/230" in u or "/202" in u:
-                return 1
+            if "max_808" in u: return 4
+            if "/808" in u or "/810" in u: return 3
+            if "/404" in u or "/400" in u: return 2
+            if "/230" in u or "/202" in u: return 1
             return 0
         candidates.sort(key=score, reverse=True)
         return candidates[0]
@@ -328,47 +366,40 @@ def _fetch_behance_thumbnail(project_id: str) -> str:
     return ""
 
 async def _auto_thumbnail(data: dict) -> str:
-    """Resolve a thumbnail URL automatically when admin didn't provide one."""
     if data.get("thumbnail_url"):
         return data["thumbnail_url"]
-
     media_type = data.get("media_type", "image")
     media_url = data.get("media_url", "") or ""
     behance_embed = data.get("behance_embed", "") or ""
-
-    # 1. Behance embed (either snippet or media_url)
     bid = _extract_behance_id(behance_embed) or _extract_behance_id(media_url)
     if bid:
         thumb = await asyncio.to_thread(_fetch_behance_thumbnail, bid)
         if thumb:
             return thumb
-
-    # 2. Google Drive (works for both images and videos — Drive returns a poster for videos)
     drive_id = _extract_drive_id(media_url)
     if drive_id:
         return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w2000"
-
-    # 3. Plain image URL — use it directly
     if media_type == "image" and media_url:
         return media_url
-
     return ""
 
 
 @api_router.get("/projects", response_model=List[Project])
 async def list_projects(category_id: Optional[str] = None):
-    q = {}
-    if category_id:
-        q["category_id"] = category_id
-    items = await db.projects.find(q, {"_id": 0}).sort("order", 1).to_list(1000)
-    return [Project(**p) for p in items]
+    async with pool.acquire() as conn:
+        if category_id:
+            rows = await conn.fetch('SELECT * FROM projects WHERE category_id=$1 ORDER BY "order" ASC', category_id)
+        else:
+            rows = await conn.fetch('SELECT * FROM projects ORDER BY "order" ASC')
+    return [_row_to_project(r) for r in rows]
 
 @api_router.get("/projects/{project_id}", response_model=Project)
 async def get_project(project_id: str):
-    p = await db.projects.find_one({"id": project_id}, {"_id": 0})
-    if not p:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM projects WHERE id=$1", project_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Project not found")
-    return Project(**p)
+    return _row_to_project(row)
 
 @api_router.post("/projects", response_model=Project)
 async def create_project(payload: ProjectCreate, _=Depends(get_current_admin)):
@@ -376,27 +407,48 @@ async def create_project(payload: ProjectCreate, _=Depends(get_current_admin)):
     if not data.get("thumbnail_url"):
         data["thumbnail_url"] = await _auto_thumbnail(data)
     project = Project(**data)
-    await db.projects.insert_one(project.model_dump())
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO projects (id,title,category_id,description,short_description,media_type,
+              media_url,behance_embed,thumbnail_url,tools,year,client,external_link,
+              featured,show_in_book,"order",created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        """, project.id, project.title, project.category_id, project.description,
+            project.short_description, project.media_type, project.media_url,
+            project.behance_embed, project.thumbnail_url, json.dumps(project.tools),
+            project.year, project.client, project.external_link, project.featured,
+            project.show_in_book, project.order, project.created_at)
     return project
 
 @api_router.put("/projects/{project_id}", response_model=Project)
 async def update_project(project_id: str, payload: ProjectUpdate, _=Depends(get_current_admin)):
-    existing = await db.projects.find_one({"id": project_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Project not found")
-    update = {k: v for k, v in payload.model_dump().items() if v is not None}
-    merged = {**existing, **update}
-    # If admin cleared / didn't set a thumbnail, auto-derive from media
-    if not merged.get("thumbnail_url"):
-        merged["thumbnail_url"] = await _auto_thumbnail(merged)
-        update["thumbnail_url"] = merged["thumbnail_url"]
-    await db.projects.update_one({"id": project_id}, {"$set": update})
+    async with pool.acquire() as conn:
+        existing_row = await conn.fetchrow("SELECT * FROM projects WHERE id=$1", project_id)
+        if not existing_row:
+            raise HTTPException(status_code=404, detail="Project not found")
+        existing = _row_to_project(existing_row).model_dump()
+        update = {k: v for k, v in payload.model_dump().items() if v is not None}
+        merged = {**existing, **update}
+        if not merged.get("thumbnail_url"):
+            merged["thumbnail_url"] = await _auto_thumbnail(merged)
+            update["thumbnail_url"] = merged["thumbnail_url"]
+        await conn.execute("""
+            UPDATE projects SET title=$1,category_id=$2,description=$3,short_description=$4,
+              media_type=$5,media_url=$6,behance_embed=$7,thumbnail_url=$8,tools=$9,
+              year=$10,client=$11,external_link=$12,featured=$13,show_in_book=$14,"order"=$15
+            WHERE id=$16
+        """, merged["title"], merged["category_id"], merged["description"],
+            merged["short_description"], merged["media_type"], merged["media_url"],
+            merged["behance_embed"], merged["thumbnail_url"], json.dumps(merged["tools"]),
+            merged["year"], merged["client"], merged["external_link"], merged["featured"],
+            merged["show_in_book"], merged["order"], project_id)
     return Project(**merged)
 
 @api_router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, _=Depends(get_current_admin)):
-    res = await db.projects.delete_one({"id": project_id})
-    if res.deleted_count == 0:
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM projects WHERE id=$1", project_id)
+    if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Project not found")
     return {"ok": True}
 
@@ -421,8 +473,11 @@ async def submit_contact(payload: ContactCreate):
         subject=payload.subject or "New portfolio inquiry",
         message=payload.message,
     )
-    await db.contact_messages.insert_one(msg.model_dump())
-
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO contact_messages (id,name,email,subject,message,read,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+            msg.id, msg.name, msg.email, msg.subject, msg.message, msg.read, msg.created_at
+        )
     html = f"""
     <table style="font-family: -apple-system, sans-serif; width: 100%; max-width: 560px;">
       <tr><td style="padding: 16px 0; border-bottom: 1px solid #E1E3E8;">
@@ -440,13 +495,15 @@ async def submit_contact(payload: ContactCreate):
 
 @api_router.get("/messages", response_model=List[ContactMessage])
 async def list_messages(_=Depends(get_current_admin)):
-    items = await db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [ContactMessage(**m) for m in items]
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM contact_messages ORDER BY created_at DESC")
+    return [_row_to_message(r) for r in rows]
 
 @api_router.delete("/messages/{msg_id}")
 async def delete_message(msg_id: str, _=Depends(get_current_admin)):
-    res = await db.contact_messages.delete_one({"id": msg_id})
-    if res.deleted_count == 0:
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM contact_messages WHERE id=$1", msg_id)
+    if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Message not found")
     return {"ok": True}
 
@@ -457,64 +514,8 @@ async def root():
     return {"message": "Suzanne Cherian Portfolio API", "status": "ok"}
 
 
-# ---------- Routes: AI image generation ----------
-class ImageGenRequest(BaseModel):
-    prompt: str
-    target: str = "sketchbook_cover"  # which profile field to set
-
-@api_router.post("/admin/generate-image")
-async def generate_image(payload: ImageGenRequest, _=Depends(get_current_admin)):
-    """Generate an image with Gemini Nano Banana and store it as a static PNG."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    import uuid as _uuid
-
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
-
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"img-{_uuid.uuid4()}",
-        system_message="You are a professional concept image generator.",
-    )
-    chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
-
-    try:
-        _text, images = await chat.send_message_multimodal_response(UserMessage(text=payload.prompt))
-    except Exception as e:
-        logging.exception("Image generation failed")
-        raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
-
-    if not images:
-        raise HTTPException(status_code=502, detail="Model returned no images")
-
-    img = images[0]
-    image_bytes = base64.b64decode(img["data"])
-    filename = f"{payload.target}-{int(datetime.now(timezone.utc).timestamp())}.png"
-    filepath = STATIC_DIR / filename
-    with open(filepath, "wb") as f:
-        f.write(image_bytes)
-
-    public_url = f"/api/static/{filename}"
-
-    # Persist on profile if applicable
-    if payload.target == "sketchbook_cover":
-        await db.profile.update_one(
-            {"_id": "singleton"},
-            {"$set": {"sketchbook_cover_url": public_url, "sketchbook_cover_prompt": payload.prompt}},
-            upsert=True,
-        )
-
-    return {"url": public_url, "filename": filename}
-
-
 # ---------- App wiring ----------
 app.include_router(api_router)
-
-# Serve generated images
-STATIC_DIR = ROOT_DIR / "static"
-STATIC_DIR.mkdir(exist_ok=True)
-app.mount("/api/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -524,63 +525,126 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
-
+# ---------- Startup / Shutdown ----------
 @app.on_event("startup")
 async def startup():
-    # Indexes
-    await db.users.create_index("email", unique=True)
-    await db.categories.create_index("id", unique=True)
-    await db.projects.create_index("id", unique=True)
-    await db.contact_messages.create_index("id", unique=True)
+    global pool
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
 
-    # Seed admin
-    existing = await db.users.find_one({"email": ADMIN_EMAIL})
-    if existing is None:
-        user_doc = {
-            "id": str(uuid.uuid4()),
-            "email": ADMIN_EMAIL,
-            "name": "Suzanne Cherian",
-            "role": "admin",
-            "password_hash": hash_password(ADMIN_PASSWORD),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.users.insert_one(user_doc)
-        logger.info(f"Admin seeded: {ADMIN_EMAIL}")
-    else:
-        # If password has changed, update hash
-        if not verify_password(ADMIN_PASSWORD, existing["password_hash"]):
-            await db.users.update_one(
-                {"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD)}}
+    async with pool.acquire() as conn:
+        # Create tables
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+              id TEXT PRIMARY KEY,
+              email TEXT UNIQUE NOT NULL,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'admin',
+              password_hash TEXT NOT NULL,
+              created_at TEXT NOT NULL
             )
-            logger.info("Admin password updated from env")
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS profile (
+              id TEXT PRIMARY KEY DEFAULT 'singleton',
+              name TEXT, title TEXT, location TEXT, available BOOLEAN,
+              profile_pic_url TEXT, tagline TEXT, bio TEXT, email TEXT,
+              instagram_url TEXT, behance_url TEXT, linkedin_url TEXT,
+              cv_url TEXT, sketchbook_cover_url TEXT, sketchbook_cover_prompt TEXT
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              slug TEXT NOT NULL,
+              description TEXT DEFAULT '',
+              "order" INT DEFAULT 0,
+              created_at TEXT NOT NULL
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              category_id TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              short_description TEXT DEFAULT '',
+              media_type TEXT DEFAULT 'image',
+              media_url TEXT DEFAULT '',
+              behance_embed TEXT DEFAULT '',
+              thumbnail_url TEXT DEFAULT '',
+              tools TEXT DEFAULT '[]',
+              year TEXT DEFAULT '',
+              client TEXT DEFAULT '',
+              external_link TEXT DEFAULT '',
+              featured BOOLEAN DEFAULT FALSE,
+              show_in_book BOOLEAN DEFAULT TRUE,
+              "order" INT DEFAULT 0,
+              created_at TEXT NOT NULL
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS contact_messages (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              email TEXT NOT NULL,
+              subject TEXT DEFAULT '',
+              message TEXT NOT NULL,
+              read BOOLEAN DEFAULT FALSE,
+              created_at TEXT NOT NULL
+            )
+        """)
 
-    # Seed profile if missing
-    if not await db.profile.find_one({"_id": "singleton"}):
-        await db.profile.insert_one({
-            "_id": "singleton",
-            **Profile(
-                profile_pic_url="https://images.unsplash.com/photo-1571367032831-eabd75a52baf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwyfHxpbmRpYW4lMjBncmFwaGljJTIwZGVzaWduZXIlMjBwb3J0cmFpdHxlbnwwfHx8fDE3Nzg1NDYyMDV8MA&ixlib=rb-4.1.0&q=85",
+        # Seed admin
+        existing = await conn.fetchrow("SELECT id, password_hash FROM users WHERE email=$1", ADMIN_EMAIL)
+        if existing is None:
+            await conn.execute(
+                "INSERT INTO users (id,email,name,role,password_hash,created_at) VALUES ($1,$2,$3,$4,$5,$6)",
+                str(uuid.uuid4()), ADMIN_EMAIL, "Suzanne Cherian", "admin",
+                hash_password(ADMIN_PASSWORD), datetime.now(timezone.utc).isoformat()
+            )
+            logger.info(f"Admin seeded: {ADMIN_EMAIL}")
+        else:
+            if not verify_password(ADMIN_PASSWORD, existing["password_hash"]):
+                await conn.execute(
+                    "UPDATE users SET password_hash=$1 WHERE email=$2",
+                    hash_password(ADMIN_PASSWORD), ADMIN_EMAIL
+                )
+                logger.info("Admin password updated from env")
+
+        # Seed profile
+        prof_exists = await conn.fetchrow("SELECT id FROM profile WHERE id='singleton'")
+        if not prof_exists:
+            default = Profile(
+                profile_pic_url="https://images.unsplash.com/photo-1571367032831-eabd75a52baf?crop=entropy&cs=srgb&fm=jpg&q=85",
                 email=ADMIN_EMAIL,
                 behance_url="https://www.behance.net/suzannecherian",
-            ).model_dump()
-        })
+            )
+            await conn.execute("""
+                INSERT INTO profile (id,name,title,location,available,profile_pic_url,tagline,bio,
+                  email,instagram_url,behance_url,linkedin_url,cv_url,sketchbook_cover_url,sketchbook_cover_prompt)
+                VALUES ('singleton',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            """, default.name, default.title, default.location, default.available,
+                default.profile_pic_url, default.tagline, default.bio, default.email,
+                default.instagram_url, default.behance_url, default.linkedin_url,
+                default.cv_url, default.sketchbook_cover_url, default.sketchbook_cover_prompt)
 
-    # Seed default categories if empty
-    if await db.categories.count_documents({}) == 0:
-        defaults = [
-            {"name": "Branding", "order": 1},
-            {"name": "Illustration", "order": 2},
-            {"name": "Web Design", "order": 3},
-            {"name": "Editorial", "order": 4},
-        ]
-        for d in defaults:
-            cat = Category(name=d["name"], slug=_slugify(d["name"]), order=d["order"])
-            await db.categories.insert_one(cat.model_dump())
+        # Seed default categories
+        cat_count = await conn.fetchval("SELECT COUNT(*) FROM categories")
+        if cat_count == 0:
+            defaults = [
+                ("Branding", 1), ("Illustration", 2), ("Web Design", 3), ("Editorial", 4)
+            ]
+            for name, order in defaults:
+                cat = Category(name=name, slug=_slugify(name), order=order)
+                await conn.execute(
+                    'INSERT INTO categories (id,name,slug,description,"order",created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+                    cat.id, cat.name, cat.slug, cat.description, cat.order, cat.created_at
+                )
 
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+async def shutdown():
+    if pool:
+        await pool.close()

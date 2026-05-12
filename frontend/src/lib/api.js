@@ -1,7 +1,9 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BACKEND_URL}/api`;
+// Local dev: set REACT_APP_BACKEND_URL=http://localhost:8001 in frontend/.env
+// Vercel production: leave unset — backend is served at /_/backend on the same origin
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
+export const API = BACKEND_URL ? `${BACKEND_URL}/api` : `/_/backend/api`;
 
 const api = axios.create({ baseURL: API });
 
