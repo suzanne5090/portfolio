@@ -29,7 +29,7 @@ export default function ContactSection({ profile }) {
       <div className="max-w-[1400px] mx-auto px-6 lg:px-10 py-20 lg:py-28 grid grid-cols-12 gap-6 lg:gap-12">
         <div className="col-span-12 lg:col-span-5">
           <span className="text-[11px] tracking-[0.3em] uppercase text-neutral-400">
-            03 — Contact
+            04 — Contact
           </span>
           <h2 className="font-display font-black uppercase tracking-tighter text-5xl sm:text-6xl lg:text-7xl mt-4 leading-[0.92]">
             Let's make<br />

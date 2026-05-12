@@ -150,7 +150,7 @@ export default function PortfolioGrid({ categories, projects }) {
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
           <motion.div style={{ y: titleY }}>
             <span className="text-[11px] tracking-[0.3em] uppercase text-neutral-500">
-              02 — Selected Work · {projects.length}
+              03 — Gallery · {projects.length}
             </span>
             <h2 className="font-display font-bold text-3xl sm:text-4xl lg:text-5xl tracking-tight mt-3 leading-[1.05]">
               The gallery.

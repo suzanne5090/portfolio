@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import AboutSection from "@/components/AboutSection";
+import BookFlip from "@/components/BookFlip";
 import PortfolioGrid from "@/components/PortfolioGrid";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
@@ -41,6 +42,7 @@ export default function Home() {
       <Header profile={profile} />
       <Hero profile={profile} />
       <AboutSection profile={profile} />
+      <BookFlip projects={projects} categories={categories} />
       <PortfolioGrid categories={categories} projects={projects} />
       <ContactSection profile={profile} />
       <Footer profile={profile} />
