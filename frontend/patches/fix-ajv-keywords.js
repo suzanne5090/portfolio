@@ -1,13 +1,12 @@
 /**
  * Patches fork-ts-checker-webpack-plugin's nested ajv-keywords/_formatLimit.js
- * to be null-safe for ajv@8 (where ajv.formats is undefined).
+ * to be null-safe for ajv@8 (where ajv.formats / ajv._formats is undefined).
  *
- * The crash: `var format = formats[name]` where `formats` is undefined in ajv@8.
- * The fix:   `var format = (formats || {})[name]`
- *
- * This runs automatically after `npm install` via the "postinstall" script.
+ * In ajv@6 formats live at ajv._formats (private) or ajv.formats (getter).
+ * In ajv@8 neither exists in the same way → extendFormats() crashes.
+ * Fix: inject early return guard so the function is a no-op under ajv@8.
  */
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
 const filePath = path.resolve(
@@ -16,25 +15,35 @@ const filePath = path.resolve(
 );
 
 if (!fs.existsSync(filePath)) {
-  console.log('[patch-ajv] _formatLimit.js not found — skipping (may already be patched or absent).');
+  console.log('[patch-ajv] _formatLimit.js not found — skipping.');
   process.exit(0);
 }
 
 let content = fs.readFileSync(filePath, 'utf8');
 
-if (content.includes('if (!formats) return;')) {
+if (content.includes('/* patched-ajv8 */')) {
   console.log('[patch-ajv] Already patched — skipping.');
   process.exit(0);
 }
 
-const ORIGINAL = 'var formats = ajv.formats;';
-const PATCHED   = 'var formats = ajv.formats;\n  if (!formats) return; // patched: ajv@8 does not expose formats — skip safely';
+// Log first 300 chars so we can debug if the pattern changes again
+console.log('[patch-ajv] File preview (first 400 chars):\n' + content.slice(0, 400));
 
-if (!content.includes(ORIGINAL)) {
-  console.log('[patch-ajv] Target string not found — file may have changed. Skipping.');
+// Match either:  var formats = ajv.formats;
+//            or  var formats = ajv._formats;
+// (ajv-keywords v3.x uses _formats internally; some builds differ)
+const PATTERN = /var formats = ajv\._?formats;/;
+
+if (!PATTERN.test(content)) {
+  console.error('[patch-ajv] ERROR: Could not find formats assignment — aborting patch.');
+  console.error('[patch-ajv] Proceeding anyway (build may still crash).');
   process.exit(0);
 }
 
-content = content.replace(ORIGINAL, PATCHED);
+content = content.replace(
+  PATTERN,
+  'var formats = ajv.formats || ajv._formats; /* patched-ajv8 */\n  if (!formats) return;'
+);
+
 fs.writeFileSync(filePath, content, 'utf8');
 console.log('[patch-ajv] Patched _formatLimit.js successfully.');
