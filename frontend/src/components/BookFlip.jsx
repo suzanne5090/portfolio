@@ -20,7 +20,7 @@ const PageWrapper = React.forwardRef(({ children, className = "", testId }, ref)
 ));
 PageWrapper.displayName = "PageWrapper";
 
-const CoverPage = React.forwardRef(({ profile, coverImage, totalProjects }, ref) => (
+const CoverPage = React.forwardRef(({ profile, coverImage, totalProjects, isMobile }, ref) => (
   <PageWrapper ref={ref} testId="book-cover">
     {coverImage ? (
       <img
@@ -71,7 +71,7 @@ const CoverPage = React.forwardRef(({ profile, coverImage, totalProjects }, ref)
             {totalProjects} {totalProjects === 1 ? "page" : "pages"}
           </div>
           <div className="text-[10px] tracking-[0.3em] uppercase text-white/70 mt-1">
-            ↳ scroll to open
+            {isMobile ? "↳ swipe to open" : "↳ scroll to open"}
           </div>
         </div>
       </div>
@@ -197,6 +197,16 @@ export default function BookFlip({ projects, categories, profile }) {
   // queue holds the page we want to land on if a flip is currently in progress
   const queuedTargetRef = useRef(null);
 
+  // Responsive: detect viewport. Mobile uses portrait, swipe-driven book.
+  const [isMobile, setIsMobile] = React.useState(
+    typeof window !== "undefined" ? window.innerWidth < 1024 : false
+  );
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start start", "end end"],
@@ -211,8 +221,9 @@ export default function BookFlip({ projects, categories, profile }) {
   // book pages = cover + 2*projects + back cover
   const numProjects = projectPages.length;
   const numSpreads = numProjects + 1; // cover + one spread per project
-  // shorter section — 80vh per spread = snappier scroll mapping
-  const heightVh = (numSpreads + 0.5) * 80;
+  // On mobile, the book is swipe-driven so the section is just one screen tall.
+  // On desktop, scroll-driven: each spread gets ~80vh.
+  const heightVh = isMobile ? 100 : (numSpreads + 0.5) * 80;
 
   // Backend cover image URL (absolute)
   const coverPath = profile?.sketchbook_cover_url || "";
@@ -243,8 +254,9 @@ export default function BookFlip({ projects, categories, profile }) {
   };
 
   // Hysteresis: only flip when scroll progress has moved well into the next segment.
+  // Mobile is swipe-driven, so we skip this entire mechanism on phone.
   useEffect(() => {
-    if (numProjects === 0) return undefined;
+    if (numProjects === 0 || isMobile) return undefined;
 
     let lastSpread = 0;
     const unsubscribe = scrollYProgress.on("change", (v) => {
@@ -262,7 +274,7 @@ export default function BookFlip({ projects, categories, profile }) {
       }
     });
     return unsubscribe;
-  }, [scrollYProgress, numProjects, numSpreads]);
+  }, [scrollYProgress, numProjects, numSpreads, isMobile]);
 
   // Callback wired into HTMLFlipBook's onFlip — fires when a flip animation completes.
   const handleBookFlip = (e) => {
@@ -305,41 +317,45 @@ export default function BookFlip({ projects, categories, profile }) {
           </div>
           <div className="hidden sm:block text-[10px] tracking-[0.3em] uppercase text-neutral-500 text-right">
             {numProjects} {numProjects === 1 ? "page" : "pages"}<br />
-            scroll ↓ to flip
+            {isMobile ? "swipe ↔ to flip" : "scroll ↓ to flip"}
           </div>
         </div>
 
-        {/* Scroll progress bar */}
-        <motion.div
-          style={{ scaleX: progressScale, transformOrigin: "0% 50%" }}
-          className="absolute top-0 left-0 right-0 h-[2px] bg-[#FF3333] z-30"
-        />
+        {/* Scroll progress bar (desktop only — mobile is swipe-driven) */}
+        {!isMobile && (
+          <motion.div
+            style={{ scaleX: progressScale, transformOrigin: "0% 50%" }}
+            className="absolute top-0 left-0 right-0 h-[2px] bg-[#FF3333] z-30"
+          />
+        )}
 
-        {/* Book stage — desktop */}
-        <div className="hidden lg:flex flex-1 items-center justify-center px-12">
+        {/* Book stage — responsive */}
+        <div className="flex flex-1 items-center justify-center px-4 sm:px-8 lg:px-12 pt-20 pb-6 lg:py-0">
           <HTMLFlipBook
+            key={isMobile ? "portrait" : "landscape"}
             ref={bookRef}
-            width={500}
-            height={700}
-            size="fixed"
-            minWidth={400}
-            maxWidth={600}
-            minHeight={500}
-            maxHeight={900}
+            width={isMobile ? 320 : 500}
+            height={isMobile ? 480 : 700}
+            size="stretch"
+            minWidth={280}
+            maxWidth={isMobile ? 480 : 600}
+            minHeight={420}
+            maxHeight={isMobile ? 720 : 900}
             showCover={true}
             drawShadow={true}
-            flippingTime={650}
+            flippingTime={isMobile ? 550 : 650}
             maxShadowOpacity={0.5}
             useMouseEvents={true}
-            mobileScrollSupport={false}
-            usePortrait={false}
+            mobileScrollSupport={true}
+            swipeDistance={30}
+            usePortrait={isMobile}
             startPage={0}
             onFlip={handleBookFlip}
             className="sketchbook-fb"
             style={{ background: "transparent" }}
           >
             {/* Page 0 — cover (alone on right because of showCover) */}
-            <CoverPage profile={profile} coverImage={coverImage} totalProjects={numProjects} />
+            <CoverPage profile={profile} coverImage={coverImage} totalProjects={numProjects} isMobile={isMobile} />
 
             {/* For each project: left page = image, right page = text */}
             {projectPages.flatMap((p, i) => [
@@ -357,60 +373,6 @@ export default function BookFlip({ projects, categories, profile }) {
             {/* Back cover */}
             <BackCover profile={profile} />
           </HTMLFlipBook>
-        </div>
-
-        {/* Mobile fallback */}
-        <div className="lg:hidden flex-1 overflow-y-auto px-6 py-20">
-          <div className="space-y-6 max-w-md mx-auto">
-            {coverImage && (
-              <div className="border border-[#0A0B10] overflow-hidden relative aspect-[4/3]">
-                <img src={coverImage} alt="Sketchbook cover" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                <div className="absolute inset-0 flex flex-col justify-end p-5 text-white">
-                  <span className="text-[10px] tracking-[0.3em] uppercase opacity-80">The Sketchbook</span>
-                  <h3 className="font-display font-black uppercase text-3xl tracking-tighter mt-2">
-                    Selected <span className="text-[#FF3333]">works</span>.
-                  </h3>
-                </div>
-              </div>
-            )}
-            {projectPages.map((p, i) => {
-              const cat = categories.find((c) => c.id === p.category_id);
-              const thumb = toDriveImage(p.thumbnail_url || p.media_url);
-              return (
-                <div
-                  key={p.id}
-                  data-testid={`book-mobile-card-${p.id}`}
-                  className="border border-[#0A0B10] bg-white overflow-hidden"
-                >
-                  <div className="aspect-[4/3] bg-[#F4F5F8] overflow-hidden">
-                    {thumb && (
-                      <img
-                        src={thumb}
-                        alt={p.title}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="p-5">
-                    <div className="text-[10px] tracking-[0.3em] uppercase text-[#FF3333]">
-                      {cat?.name || "Work"}
-                    </div>
-                    <h3 className="font-display font-black uppercase text-2xl tracking-tighter mt-2">
-                      {p.title}
-                    </h3>
-                    {p.short_description && (
-                      <p className="text-sm text-neutral-700 mt-3">{p.short_description}</p>
-                    )}
-                    <div className="mt-4 text-[10px] tracking-[0.3em] uppercase text-neutral-400">
-                      Page {String(i + 1).padStart(2, "0")} / {String(numProjects).padStart(2, "0")}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
     </section>
