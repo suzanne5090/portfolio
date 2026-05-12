@@ -58,6 +58,7 @@
     "zod": "^3.24.4"
   },
   "scripts": {
+    "postinstall": "node patches/fix-ajv-keywords.js",
     "start": "craco start",
     "build": "craco build",
     "test": "craco test"
