@@ -70,3 +70,33 @@ fs.mkdirSync(path.dirname(entryPath), { recursive: true });
 fs.writeFileSync(entryPath, STUB, 'utf8');
 console.log('[patch-fork-ts] ✓ Replaced ' + pkgMain + ' with no-op stub.');
 console.log('[patch-fork-ts] Done.');
+
+// ─── Also patch top-level ajv-keywords/_formatLimit.js if it's v3 ────────────
+const topLevelAjvKw = path.resolve(__dirname, '../node_modules/ajv-keywords');
+if (fs.existsSync(topLevelAjvKw)) {
+  try {
+    const kwPkg = JSON.parse(fs.readFileSync(path.join(topLevelAjvKw, 'package.json'), 'utf8'));
+    console.log('[patch-ajv] Top-level ajv-keywords version: ' + kwPkg.version);
+    const kwMajor = parseInt((kwPkg.version || '0').split('.')[0], 10);
+    if (kwMajor < 5) {
+      const flPath = path.join(topLevelAjvKw, 'keywords', '_formatLimit.js');
+      if (fs.existsSync(flPath)) {
+        let flContent = fs.readFileSync(flPath, 'utf8');
+        if (!flContent.includes('/* patched */') && /var formats = ajv\._?formats;/.test(flContent)) {
+          flContent = flContent.replace(
+            /var formats = ajv\._?formats;/,
+            'var formats = ajv._formats || ajv.formats || {}; /* patched */'
+          );
+          fs.writeFileSync(flPath, flContent, 'utf8');
+          console.log('[patch-ajv] ✓ Patched top-level ajv-keywords/_formatLimit.js');
+        } else {
+          console.log('[patch-ajv] Top-level _formatLimit.js already patched or pattern not found.');
+        }
+      }
+    } else {
+      console.log('[patch-ajv] Top-level ajv-keywords is v5+ — no formatLimit patch needed.');
+    }
+  } catch (e) {
+    console.log('[patch-ajv] Could not read top-level ajv-keywords package.json: ' + e.message);
+  }
+}
