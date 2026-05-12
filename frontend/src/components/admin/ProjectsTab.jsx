@@ -232,7 +232,7 @@ export default function ProjectsTab() {
                 testid="proj-behance-embed"
               />
               <FInput
-                label="Thumbnail URL (for card on grid)"
+                label="Thumbnail URL (optional — auto-fetched if blank)"
                 value={form.thumbnail_url}
                 onChange={(v) => set("thumbnail_url", v)}
                 className="sm:col-span-2"

@@ -13,6 +13,8 @@ from typing import List, Optional
 
 import bcrypt
 import jwt
+import re
+import requests
 import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -265,6 +267,87 @@ async def delete_category(cat_id: str, _=Depends(get_current_admin)):
 
 
 # ---------- Routes: Projects ----------
+def _extract_drive_id(url: str) -> Optional[str]:
+    if not url:
+        return None
+    for pattern in (r"/file/d/([a-zA-Z0-9_-]{10,})", r"[?&]id=([a-zA-Z0-9_-]{10,})", r"/d/([a-zA-Z0-9_-]{10,})"):
+        m = re.search(pattern, url)
+        if m:
+            return m.group(1)
+    return None
+
+def _extract_behance_id(text: str) -> Optional[str]:
+    if not text:
+        return None
+    # Behance project IDs are 9-10 digit numbers in URLs like /gallery/244895461/ or /embed/project/244895461
+    for pattern in (r"behance\.net/gallery/(\d{6,})", r"behance\.net/embed/project/(\d{6,})", r"behance\.net/embed/(\d{6,})"):
+        m = re.search(pattern, text)
+        if m:
+            return m.group(1)
+    return None
+
+def _fetch_behance_thumbnail(project_id: str) -> str:
+    """Scrape the Behance embed page for the project cover image."""
+    try:
+        url = f"https://www.behance.net/embed/project/{project_id}"
+        r = requests.get(
+            url,
+            timeout=8,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+        )
+        if r.status_code != 200:
+            return ""
+        # Prefer the largest CDN image (max_808_webp), fall back to others
+        candidates = re.findall(r"https://mir-s3-cdn-cf\.behance\.net/projects/[^\"'<>\s]+", r.text)
+        if not candidates:
+            return ""
+        # Order: max_808_webp > 808_webp > 404_webp > others
+        def score(u):
+            if "max_808" in u:
+                return 4
+            if "/808" in u or "/810" in u:
+                return 3
+            if "/404" in u or "/400" in u:
+                return 2
+            if "/230" in u or "/202" in u:
+                return 1
+            return 0
+        candidates.sort(key=score, reverse=True)
+        return candidates[0]
+    except Exception as e:
+        logging.warning(f"Behance scrape failed for {project_id}: {e}")
+    return ""
+
+async def _auto_thumbnail(data: dict) -> str:
+    """Resolve a thumbnail URL automatically when admin didn't provide one."""
+    if data.get("thumbnail_url"):
+        return data["thumbnail_url"]
+
+    media_type = data.get("media_type", "image")
+    media_url = data.get("media_url", "") or ""
+    behance_embed = data.get("behance_embed", "") or ""
+
+    # 1. Behance embed (either snippet or media_url)
+    bid = _extract_behance_id(behance_embed) or _extract_behance_id(media_url)
+    if bid:
+        thumb = await asyncio.to_thread(_fetch_behance_thumbnail, bid)
+        if thumb:
+            return thumb
+
+    # 2. Google Drive (works for both images and videos — Drive returns a poster for videos)
+    drive_id = _extract_drive_id(media_url)
+    if drive_id:
+        return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w2000"
+
+    # 3. Plain image URL — use it directly
+    if media_type == "image" and media_url:
+        return media_url
+
+    return ""
+
+
 @api_router.get("/projects", response_model=List[Project])
 async def list_projects(category_id: Optional[str] = None):
     q = {}
@@ -282,7 +365,10 @@ async def get_project(project_id: str):
 
 @api_router.post("/projects", response_model=Project)
 async def create_project(payload: ProjectCreate, _=Depends(get_current_admin)):
-    project = Project(**payload.model_dump())
+    data = payload.model_dump()
+    if not data.get("thumbnail_url"):
+        data["thumbnail_url"] = await _auto_thumbnail(data)
+    project = Project(**data)
     await db.projects.insert_one(project.model_dump())
     return project
 
@@ -292,8 +378,12 @@ async def update_project(project_id: str, payload: ProjectUpdate, _=Depends(get_
     if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
     update = {k: v for k, v in payload.model_dump().items() if v is not None}
-    await db.projects.update_one({"id": project_id}, {"$set": update})
     merged = {**existing, **update}
+    # If admin cleared / didn't set a thumbnail, auto-derive from media
+    if not merged.get("thumbnail_url"):
+        merged["thumbnail_url"] = await _auto_thumbnail(merged)
+        update["thumbnail_url"] = merged["thumbnail_url"]
+    await db.projects.update_one({"id": project_id}, {"$set": update})
     return Project(**merged)
 
 @api_router.delete("/projects/{project_id}")
