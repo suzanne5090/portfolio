@@ -1,50 +1,75 @@
 /**
  * Patches fork-ts-checker-webpack-plugin's nested dependencies for Node 24 compatibility.
  *
- * Problem chain (module load order, before webpack even starts):
- *   1. react-scripts webpack config requires fork-ts-checker-webpack-plugin
- *   2. fork-ts-checker's node_modules/schema-utils/dist/validate.js loads
- *   3. validate.js:56 calls ajvKeywords(ajv, ['formatMinimum', ...]) as a SIDE EFFECT
- *   4. ajvKeywords resolves to TOP-LEVEL ajv-keywords@5 (no formatMinimum) → CRASH
+ * The "Unknown keyword formatMinimum" error comes from some file inside
+ * fork-ts-checker's nested node_modules calling:
+ *   ajvKeywords(ajv, ['formatMinimum', ...])
+ * with the top-level ajv-keywords@5, which dropped formatMinimum in v5.
  *
- * Fix: Remove ajvKeywords() call from fork-ts-checker's validate.js.
- * This is safe because:
- * - ForkTsCheckerWebpackPlugin is already filtered in craco.config.js (JS-only project)
- * - formatMinimum/formatMaximum keywords are not needed for this project's validation
+ * Strategy: recursively scan fork-ts-checker's nested node_modules for any .js
+ * file containing ajvKeywords() calls and comment them out.
  */
 const fs   = require('fs');
 const path = require('path');
 
-const nodeModules = path.resolve(__dirname, '../node_modules');
+const nodeModules   = path.resolve(__dirname, '../node_modules');
+const forkTsBase    = path.join(nodeModules, 'fork-ts-checker-webpack-plugin');
 
-// ─── Patch 1: validate.js — remove ajvKeywords() side-effect call ─────────────
-const validatePath = path.join(
-  nodeModules,
-  'fork-ts-checker-webpack-plugin/node_modules/schema-utils/dist/validate.js'
-);
-
-if (fs.existsSync(validatePath)) {
-  let content = fs.readFileSync(validatePath, 'utf8');
-  if (content.includes('ajvKeywords(') && !content.includes('/* patched-validate */')) {
-    content = content.replace(
-      /ajvKeywords\([^)]+\);/g,
-      '/* patched-validate: ajvKeywords removed for Node 24 compatibility */'
-    );
-    fs.writeFileSync(validatePath, content, 'utf8');
-    console.log('[patch-ajv] ✓ Patched schema-utils/validate.js (removed ajvKeywords call).');
-  } else if (content.includes('/* patched-validate */')) {
-    console.log('[patch-ajv] schema-utils/validate.js already patched.');
-  } else {
-    console.log('[patch-ajv] ajvKeywords call not found in validate.js — skipping.');
-  }
-} else {
-  console.log('[patch-ajv] fork-ts-checker nested schema-utils not found — skipping validate patch.');
+if (!fs.existsSync(forkTsBase)) {
+  console.log('[patch-ajv] fork-ts-checker-webpack-plugin not found — skipping.');
+  process.exit(0);
 }
 
-// ─── Patch 2: _formatLimit.js — safe fallback for uninitialised ajv._formats ──
+// ─── Recursive scanner ──────────────────────────────────────────────────────
+let patchCount = 0;
+
+function patchFile(filePath) {
+  let content;
+  try { content = fs.readFileSync(filePath, 'utf8'); } catch (_) { return; }
+
+  if (!content.includes('ajvKeywords(')) return;
+  if (content.includes('/* patched-validate */'))  return;
+
+  const patched = content.replace(
+    /ajvKeywords\([^)]+\);/g,
+    '/* patched-validate: ajvKeywords removed for Node 24 / ajv-keywords@5 compat */'
+  );
+
+  if (patched === content) return; // regex didn't match
+
+  fs.writeFileSync(filePath, patched, 'utf8');
+  const rel = filePath.replace(nodeModules + path.sep, '');
+  console.log('[patch-ajv] ✓ Patched: ' + rel);
+  patchCount++;
+}
+
+function walk(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (const e of entries) {
+    if (e.name === '.bin') continue;
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      walk(full);
+    } else if (e.isFile() && e.name.endsWith('.js')) {
+      patchFile(full);
+    }
+  }
+}
+
+console.log('[patch-ajv] Scanning fork-ts-checker nested node_modules…');
+walk(path.join(forkTsBase, 'node_modules'));
+
+if (patchCount === 0) {
+  console.log('[patch-ajv] No ajvKeywords() calls found in nested node_modules.');
+} else {
+  console.log('[patch-ajv] Patched ' + patchCount + ' file(s).');
+}
+
+// ─── Also fix _formatLimit.js (ajv._formats not initialised in ajv@6) ────────
 const formatLimitPath = path.join(
-  nodeModules,
-  'fork-ts-checker-webpack-plugin/node_modules/ajv-keywords/keywords/_formatLimit.js'
+  forkTsBase,
+  'node_modules/ajv-keywords/keywords/_formatLimit.js'
 );
 
 if (fs.existsSync(formatLimitPath)) {
@@ -56,11 +81,7 @@ if (fs.existsSync(formatLimitPath)) {
     );
     fs.writeFileSync(formatLimitPath, content, 'utf8');
     console.log('[patch-ajv] ✓ Patched _formatLimit.js (ajv._formats fallback).');
-  } else {
-    console.log('[patch-ajv] _formatLimit.js already patched or not found.');
   }
-} else {
-  console.log('[patch-ajv] fork-ts-checker nested ajv-keywords not found — skipping formatLimit patch.');
 }
 
 console.log('[patch-ajv] Done.');
