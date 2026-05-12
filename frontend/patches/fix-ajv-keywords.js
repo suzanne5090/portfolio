@@ -71,32 +71,65 @@ fs.writeFileSync(entryPath, STUB, 'utf8');
 console.log('[patch-fork-ts] ✓ Replaced ' + pkgMain + ' with no-op stub.');
 console.log('[patch-fork-ts] Done.');
 
-// ─── Also patch top-level ajv-keywords/_formatLimit.js if it's v3 ────────────
-const topLevelAjvKw = path.resolve(__dirname, '../node_modules/ajv-keywords');
+// ─── No-op stub for _formatLimit.js ──────────────────────────────────────────
+// formatMinimum / formatMaximum are unused in this JS-only project.
+// Replacing the file completely avoids all ajv@6 vs ajv@8 _formats incompatibility.
+const FORMAT_LIMIT_NOOP = `'use strict';
+/* no-op: formatMinimum/formatMaximum removed — unused in this JS project */
+module.exports = function defFunc(ajv) { return defFunc; };
+module.exports.definition = { type: 'string', validate: function() { return true; } };
+`;
+
+function patchFormatLimit(dir) {
+  // v3 stores keywords in keywords/ subdir
+  const candidates = [
+    path.join(dir, 'keywords', '_formatLimit.js'),
+    path.join(dir, 'dist', 'keywords', '_formatLimit.js'),
+  ];
+  for (const p of candidates) {
+    if (!fs.existsSync(p)) continue;
+    const existing = fs.readFileSync(p, 'utf8');
+    if (existing.includes('/* no-op:')) {
+      console.log('[patch-ajv] Already no-op: ' + p.replace(nodeModules + '/', ''));
+      continue;
+    }
+    fs.writeFileSync(p, FORMAT_LIMIT_NOOP, 'utf8');
+    console.log('[patch-ajv] ✓ Replaced with no-op: ' + p.replace(nodeModules + '/', ''));
+  }
+}
+
+// Patch top-level ajv-keywords
+const nodeModules = path.resolve(__dirname, '../node_modules');
+const topLevelAjvKw = path.join(nodeModules, 'ajv-keywords');
 if (fs.existsSync(topLevelAjvKw)) {
   try {
     const kwPkg = JSON.parse(fs.readFileSync(path.join(topLevelAjvKw, 'package.json'), 'utf8'));
-    console.log('[patch-ajv] Top-level ajv-keywords version: ' + kwPkg.version);
-    const kwMajor = parseInt((kwPkg.version || '0').split('.')[0], 10);
-    if (kwMajor < 5) {
-      const flPath = path.join(topLevelAjvKw, 'keywords', '_formatLimit.js');
-      if (fs.existsSync(flPath)) {
-        let flContent = fs.readFileSync(flPath, 'utf8');
-        if (!flContent.includes('/* patched */') && /var formats = ajv\._?formats;/.test(flContent)) {
-          flContent = flContent.replace(
-            /var formats = ajv\._?formats;/,
-            'var formats = ajv._formats || ajv.formats || {}; /* patched */'
-          );
-          fs.writeFileSync(flPath, flContent, 'utf8');
-          console.log('[patch-ajv] ✓ Patched top-level ajv-keywords/_formatLimit.js');
-        } else {
-          console.log('[patch-ajv] Top-level _formatLimit.js already patched or pattern not found.');
-        }
-      }
-    } else {
-      console.log('[patch-ajv] Top-level ajv-keywords is v5+ — no formatLimit patch needed.');
-    }
+    console.log('[patch-ajv] Top-level ajv-keywords: v' + kwPkg.version);
+    patchFormatLimit(topLevelAjvKw);
   } catch (e) {
-    console.log('[patch-ajv] Could not read top-level ajv-keywords package.json: ' + e.message);
+    console.log('[patch-ajv] Could not patch top-level ajv-keywords: ' + e.message);
   }
 }
+
+// Patch any nested ajv-keywords (e.g. inside other plugins)
+const nestedPattern = /[\\/]node_modules[\\/](.+)[\\/]node_modules[\\/]ajv-keywords$/;
+function walkForNestedAjvKw(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name === '.bin') continue;
+    const full = path.join(dir, e.name);
+    if (e.name === 'ajv-keywords' && nestedPattern.test(full)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(full, 'package.json'), 'utf8'));
+        console.log('[patch-ajv] Found nested ajv-keywords v' + pkg.version + ' at ' + full.replace(nodeModules + '/', ''));
+        patchFormatLimit(full);
+      } catch (_) {}
+    } else {
+      walkForNestedAjvKw(full);
+    }
+  }
+}
+walkForNestedAjvKw(nodeModules);
+
+console.log('[patch-ajv] All done.');
