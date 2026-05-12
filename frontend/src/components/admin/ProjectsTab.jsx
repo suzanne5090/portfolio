@@ -25,6 +25,7 @@ const emptyForm = {
   client: "",
   external_link: "",
   featured: false,
+  show_in_book: true,
   order: 0,
 };
 
@@ -152,6 +153,11 @@ export default function ProjectsTab() {
                       <Star className="w-3 h-3" /> Featured
                     </span>
                   )}
+                  {p.show_in_book === false && (
+                    <span className="absolute top-2 right-2 bg-neutral-700 text-white text-[9px] tracking-[0.2em] uppercase px-2 py-1">
+                      Hidden from book
+                    </span>
+                  )}
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <div className="text-[10px] tracking-[0.2em] uppercase text-neutral-500">
@@ -246,7 +252,7 @@ export default function ProjectsTab() {
                 testid="proj-external"
               />
 
-              <div className="sm:col-span-2 flex items-center gap-6">
+              <div className="sm:col-span-2 flex items-center gap-6 flex-wrap">
                 <label className="inline-flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -256,6 +262,16 @@ export default function ProjectsTab() {
                     className="w-4 h-4 accent-[#FF3333]"
                   />
                   Featured
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.show_in_book !== false}
+                    onChange={(e) => set("show_in_book", e.target.checked)}
+                    data-testid="proj-show-in-book"
+                    className="w-4 h-4 accent-[#FF3333]"
+                  />
+                  Include in Sketchbook
                 </label>
                 <label className="inline-flex items-center gap-3 text-sm">
                   <span className="text-[11px] tracking-[0.2em] uppercase text-neutral-500">Order</span>

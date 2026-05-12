@@ -114,6 +114,7 @@ class Project(BaseModel):
     client: str = ""
     external_link: str = ""
     featured: bool = False
+    show_in_book: bool = True
     order: int = 0
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -131,6 +132,7 @@ class ProjectCreate(BaseModel):
     client: str = ""
     external_link: str = ""
     featured: bool = False
+    show_in_book: bool = True
     order: int = 0
 
 class ProjectUpdate(BaseModel):
@@ -147,6 +149,7 @@ class ProjectUpdate(BaseModel):
     client: Optional[str] = None
     external_link: Optional[str] = None
     featured: Optional[bool] = None
+    show_in_book: Optional[bool] = None
     order: Optional[int] = None
 
 class ContactCreate(BaseModel):

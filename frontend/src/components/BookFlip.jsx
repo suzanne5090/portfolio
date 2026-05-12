@@ -191,21 +191,28 @@ BackCover.displayName = "BackCover";
 export default function BookFlip({ projects, categories, profile }) {
   const sectionRef = useRef(null);
   const bookRef = useRef(null);
+  // Track the most recently requested page + whether an animation is in flight.
+  const lastTargetRef = useRef(0);
+  const isFlippingRef = useRef(false);
+  // queue holds the page we want to land on if a flip is currently in progress
+  const queuedTargetRef = useRef(null);
 
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start start", "end end"],
   });
 
-  // Sort newest first, cap at 8
+  // Sort newest first, only those the admin has marked for the book
   const projectPages = [...projects]
+    .filter((p) => p.show_in_book !== false)
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
-    .slice(0, 8);
+    .slice(0, 12);
 
   // book pages = cover + 2*projects + back cover
   const numProjects = projectPages.length;
   const numSpreads = numProjects + 1; // cover + one spread per project
-  const heightVh = (numSpreads + 1.2) * 100;
+  // shorter section — 80vh per spread = snappier scroll mapping
+  const heightVh = (numSpreads + 0.5) * 80;
 
   // Backend cover image URL (absolute)
   const coverPath = profile?.sketchbook_cover_url || "";
@@ -216,25 +223,63 @@ export default function BookFlip({ projects, categories, profile }) {
   // Progress bar
   const progressScale = useTransform(scrollYProgress, [0, 1], [0, 1]);
 
-  // Drive book.flip() from scroll position
+  // Convert a "spread index" (0..numSpreads-1) → page index inside the book.
+  const spreadToPage = (spread) => (spread === 0 ? 0 : 2 * spread - 1);
+
+  // Try to land on the given target page; coalesce while a flip is animating.
+  const requestFlip = (targetPage) => {
+    const flipper = bookRef.current?.pageFlip?.();
+    if (!flipper) return;
+    if (targetPage === lastTargetRef.current) return;
+    lastTargetRef.current = targetPage;
+
+    if (isFlippingRef.current) {
+      // queue — handled when current flip ends
+      queuedTargetRef.current = targetPage;
+      return;
+    }
+    isFlippingRef.current = true;
+    try { flipper.flip(targetPage); } catch (_e) { isFlippingRef.current = false; }
+  };
+
+  // Hysteresis: only flip when scroll progress has moved well into the next segment.
   useEffect(() => {
     if (numProjects === 0) return undefined;
+
+    let lastSpread = 0;
     const unsubscribe = scrollYProgress.on("change", (v) => {
-      const flipper = bookRef.current?.pageFlip?.();
-      if (!flipper) return;
-      // Map progress to spread index. Each spread = one slice of scroll.
-      // cover is spread 0, project 1 is spread 1, etc.
-      const targetSpread = Math.min(numSpreads - 1, Math.max(0, Math.floor(v * numSpreads)));
-      // Convert spread index → left page index of that spread.
-      // Cover: page 0. Project N spread: left page = 1 + 2*(N-1) = 2N-1
-      const targetPage = targetSpread === 0 ? 0 : 2 * targetSpread - 1;
-      const current = flipper.getCurrentPageIndex();
-      if (current !== targetPage) {
-        try { flipper.flip(targetPage); } catch (_e) { /* ignore mid-anim */ }
+      // segment size = 1 / numSpreads. Apply a small dead-zone (10% of segment).
+      const exact = v * numSpreads;
+      let nextSpread = lastSpread;
+      // Advance forward only after we are at least 50% into next segment
+      if (exact >= lastSpread + 0.55) nextSpread = Math.min(numSpreads - 1, Math.floor(exact));
+      // Retreat backward only when we are at least 50% into the previous segment
+      else if (exact <= lastSpread - 0.45) nextSpread = Math.max(0, Math.floor(exact));
+
+      if (nextSpread !== lastSpread) {
+        lastSpread = nextSpread;
+        requestFlip(spreadToPage(nextSpread));
       }
     });
     return unsubscribe;
   }, [scrollYProgress, numProjects, numSpreads]);
+
+  // Callback wired into HTMLFlipBook's onFlip — fires when a flip animation completes.
+  const handleBookFlip = (e) => {
+    isFlippingRef.current = false;
+    const arrived = e?.data ?? 0;
+    // If user queued another flip mid-animation, run it now.
+    const queued = queuedTargetRef.current;
+    queuedTargetRef.current = null;
+    if (queued != null && queued !== arrived) {
+      isFlippingRef.current = true;
+      try {
+        bookRef.current?.pageFlip?.().flip(queued);
+      } catch (_e) {
+        isFlippingRef.current = false;
+      }
+    }
+  };
 
   if (numProjects === 0) return null;
 
@@ -283,12 +328,13 @@ export default function BookFlip({ projects, categories, profile }) {
             maxHeight={900}
             showCover={true}
             drawShadow={true}
-            flippingTime={900}
-            maxShadowOpacity={0.6}
+            flippingTime={650}
+            maxShadowOpacity={0.5}
             useMouseEvents={true}
             mobileScrollSupport={false}
             usePortrait={false}
             startPage={0}
+            onFlip={handleBookFlip}
             className="sketchbook-fb"
             style={{ background: "transparent" }}
           >
