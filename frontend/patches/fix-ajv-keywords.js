@@ -22,19 +22,19 @@ if (!fs.existsSync(filePath)) {
 
 let content = fs.readFileSync(filePath, 'utf8');
 
-if (content.includes('(formats || {})')) {
+if (content.includes('if (!formats) return;')) {
   console.log('[patch-ajv] Already patched — skipping.');
   process.exit(0);
 }
 
-const original = 'var format = formats[name];';
-const patched  = 'var format = (formats || {})[name];';
+const ORIGINAL = 'var formats = ajv.formats;';
+const PATCHED   = 'var formats = ajv.formats;\n  if (!formats) return; // patched: ajv@8 does not expose formats — skip safely';
 
-if (!content.includes(original)) {
+if (!content.includes(ORIGINAL)) {
   console.log('[patch-ajv] Target string not found — file may have changed. Skipping.');
   process.exit(0);
 }
 
-content = content.replace(original, patched);
+content = content.replace(ORIGINAL, PATCHED);
 fs.writeFileSync(filePath, content, 'utf8');
 console.log('[patch-ajv] Patched _formatLimit.js successfully.');
