@@ -24,7 +24,7 @@ from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 
 # ---------- Config ----------
-DATABASE_URL = os.environ['DATABASE_URL']
+DATABASE_URL = os.environ.get('DATABASE_URL')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7
@@ -35,6 +35,8 @@ SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 OWNER_EMAIL = os.environ.get('OWNER_EMAIL', ADMIN_EMAIL)
 
 resend.api_key = RESEND_API_KEY
+
+logger = logging.getLogger(__name__)
 
 # ---------- DB Pool ----------
 pool: asyncpg.Pool = None
@@ -530,54 +532,75 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
+    if not DATABASE_URL:
+        logger.error("CRITICAL ERROR: DATABASE_URL environment variable is not set!")
+        raise RuntimeError("DATABASE_URL is missing")
 
-    async with pool.acquire() as conn:
-        # Create tables
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-              id TEXT PRIMARY KEY,
-              email TEXT UNIQUE NOT NULL,
-              name TEXT NOT NULL,
-              role TEXT NOT NULL DEFAULT 'admin',
-              password_hash TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS profile (
-              id TEXT PRIMARY KEY DEFAULT 'singleton',
-              name TEXT, title TEXT, location TEXT, available BOOLEAN,
-              profile_pic_url TEXT, tagline TEXT, bio TEXT, email TEXT,
-              instagram_url TEXT, behance_url TEXT, linkedin_url TEXT,
-              cv_url TEXT, sketchbook_cover_url TEXT, sketchbook_cover_prompt TEXT
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS categories (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              slug TEXT NOT NULL,
-              description TEXT DEFAULT '',
-              "order" INT DEFAULT 0,
-              created_at TEXT NOT NULL
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS projects (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              category_id TEXT DEFAULT '',
-              description TEXT DEFAULT '',
-              short_description TEXT DEFAULT '',
-              media_type TEXT DEFAULT 'image',
-              media_url TEXT DEFAULT '',
-              behance_embed TEXT DEFAULT '',
-              thumbnail_url TEXT DEFAULT '',
-              tools TEXT DEFAULT '[]',
-              year TEXT DEFAULT '',
-              client TEXT DEFAULT '',
-              external_link TEXT DEFAULT '',
+    try:
+        # NeonDB requires SSL. We add it if not explicitly passed.
+        # But asyncpg handles '?sslmode=require' poorly sometimes, so we can pass ssl='require' natively
+        logger.info("Attempting to connect to the database...")
+        # If url already has sslmode, we can just connect. But passing ssl='require' is safer for Neon.
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        pool = await asyncpg.create_pool(
+            DATABASE_URL, 
+            min_size=1, 
+            max_size=5,
+            ssl=ctx if "sslmode=require" not in DATABASE_URL else None
+        )
+        logger.info("Database connection pool created successfully.")
+
+        async with pool.acquire() as conn:
+            # Create tables
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                  id TEXT PRIMARY KEY,
+                  email TEXT UNIQUE NOT NULL,
+                  name TEXT NOT NULL,
+                  role TEXT NOT NULL DEFAULT 'admin',
+                  password_hash TEXT NOT NULL,
+                  created_at TEXT NOT NULL
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS profile (
+                  id TEXT PRIMARY KEY DEFAULT 'singleton',
+                  name TEXT, title TEXT, location TEXT, available BOOLEAN,
+                  profile_pic_url TEXT, tagline TEXT, bio TEXT, email TEXT,
+                  instagram_url TEXT, behance_url TEXT, linkedin_url TEXT,
+                  cv_url TEXT, sketchbook_cover_url TEXT, sketchbook_cover_prompt TEXT
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS categories (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  slug TEXT NOT NULL,
+                  description TEXT DEFAULT '',
+                  "order" INT DEFAULT 0,
+                  created_at TEXT NOT NULL
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                  id TEXT PRIMARY KEY,
+                  title TEXT NOT NULL,
+                  category_id TEXT DEFAULT '',
+                  description TEXT DEFAULT '',
+                  short_description TEXT DEFAULT '',
+                  media_type TEXT DEFAULT 'image',
+                  media_url TEXT DEFAULT '',
+                  behance_embed TEXT DEFAULT '',
+                  thumbnail_url TEXT DEFAULT '',
+                  tools TEXT DEFAULT '[]',
+                  year TEXT DEFAULT '',
+                  client TEXT DEFAULT '',
+                  external_link TEXT DEFAULT '',
+
               featured BOOLEAN DEFAULT FALSE,
               show_in_book BOOLEAN DEFAULT TRUE,
               "order" INT DEFAULT 0,
@@ -642,6 +665,9 @@ async def startup():
                     'INSERT INTO categories (id,name,slug,description,"order",created_at) VALUES ($1,$2,$3,$4,$5,$6)',
                     cat.id, cat.name, cat.slug, cat.description, cat.order, cat.created_at
                 )
+    except Exception as e:
+        logger.exception("CRITICAL: Failed to initialize database during startup")
+        raise e
 
 
 @app.on_event("shutdown")
