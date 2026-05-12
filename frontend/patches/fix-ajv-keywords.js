@@ -1,87 +1,72 @@
 /**
- * Patches fork-ts-checker-webpack-plugin's nested dependencies for Node 24 compatibility.
+ * Postinstall: replaces fork-ts-checker-webpack-plugin with a no-op stub.
  *
- * The "Unknown keyword formatMinimum" error comes from some file inside
- * fork-ts-checker's nested node_modules calling:
- *   ajvKeywords(ajv, ['formatMinimum', ...])
- * with the top-level ajv-keywords@5, which dropped formatMinimum in v5.
+ * Why:
+ *  - This is a JavaScript-only project (no TypeScript) — the plugin provides zero value.
+ *  - It's already filtered out in craco.config.js at webpack config time.
+ *  - BUT react-scripts still requires the package at config-build time, which
+ *    triggers its nested schema-utils → ajvKeywords(ajv, ['formatMinimum', ...])
+ *    side effect. On Node 24 with ajv-keywords@5, 'formatMinimum' is gone → CRASH.
  *
- * Strategy: recursively scan fork-ts-checker's nested node_modules for any .js
- * file containing ajvKeywords() calls and comment them out.
+ * Solution: replace its dist/index.js with a no-op webpack plugin class that
+ * has zero dependencies on ajv, schema-utils, or ajv-keywords.
  */
 const fs   = require('fs');
 const path = require('path');
 
-const nodeModules   = path.resolve(__dirname, '../node_modules');
-const forkTsBase    = path.join(nodeModules, 'fork-ts-checker-webpack-plugin');
+const base = path.resolve(
+  __dirname,
+  '../node_modules/fork-ts-checker-webpack-plugin'
+);
 
-if (!fs.existsSync(forkTsBase)) {
-  console.log('[patch-ajv] fork-ts-checker-webpack-plugin not found — skipping.');
+if (!fs.existsSync(base)) {
+  console.log('[patch-fork-ts] fork-ts-checker-webpack-plugin not found — skipping.');
   process.exit(0);
 }
 
-// ─── Recursive scanner ──────────────────────────────────────────────────────
-let patchCount = 0;
+// Determine the package's main entry from its package.json
+let pkgMain = 'dist/index.js';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.join(base, 'package.json'), 'utf8'));
+  pkgMain = pkg.main || 'dist/index.js';
+} catch (_) {}
 
-function patchFile(filePath) {
-  let content;
-  try { content = fs.readFileSync(filePath, 'utf8'); } catch (_) { return; }
+const entryPath = path.join(base, pkgMain);
 
-  if (!content.includes('ajvKeywords(')) return;
-  if (content.includes('/* patched-validate */'))  return;
-
-  const patched = content.replace(
-    /ajvKeywords\([^)]+\);/g,
-    '/* patched-validate: ajvKeywords removed for Node 24 / ajv-keywords@5 compat */'
-  );
-
-  if (patched === content) return; // regex didn't match
-
-  fs.writeFileSync(filePath, patched, 'utf8');
-  const rel = filePath.replace(nodeModules + path.sep, '');
-  console.log('[patch-ajv] ✓ Patched: ' + rel);
-  patchCount++;
-}
-
-function walk(dir) {
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
-  for (const e of entries) {
-    if (e.name === '.bin') continue;
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      walk(full);
-    } else if (e.isFile() && e.name.endsWith('.js')) {
-      patchFile(full);
-    }
+// If already stubbed, skip
+if (fs.existsSync(entryPath)) {
+  const existing = fs.readFileSync(entryPath, 'utf8');
+  if (existing.includes('/* no-op stub */')) {
+    console.log('[patch-fork-ts] Already stubbed — skipping.');
+    process.exit(0);
   }
 }
 
-console.log('[patch-ajv] Scanning fork-ts-checker nested node_modules…');
-walk(path.join(forkTsBase, 'node_modules'));
+// No-op webpack plugin stub — zero imports, zero ajv/schema-utils dependency
+const STUB = `'use strict';
+/* no-op stub — replaced by postinstall for Node 24 / ajv-keywords@5 compat */
 
-if (patchCount === 0) {
-  console.log('[patch-ajv] No ajvKeywords() calls found in nested node_modules.');
-} else {
-  console.log('[patch-ajv] Patched ' + patchCount + ' file(s).');
-}
-
-// ─── Also fix _formatLimit.js (ajv._formats not initialised in ajv@6) ────────
-const formatLimitPath = path.join(
-  forkTsBase,
-  'node_modules/ajv-keywords/keywords/_formatLimit.js'
-);
-
-if (fs.existsSync(formatLimitPath)) {
-  let content = fs.readFileSync(formatLimitPath, 'utf8');
-  if (!content.includes('/* patched */') && /var formats = ajv\._?formats;/.test(content)) {
-    content = content.replace(
-      /var formats = ajv\._?formats;/,
-      'var formats = ajv._formats || ajv.formats || {}; /* patched */'
-    );
-    fs.writeFileSync(formatLimitPath, content, 'utf8');
-    console.log('[patch-ajv] ✓ Patched _formatLimit.js (ajv._formats fallback).');
+class ForkTsCheckerWebpackPlugin {
+  constructor() {}
+  apply(compiler) {}
+  static getCompilerHooks(compiler) {
+    return {
+      start: { tap: function() {} },
+      waiting: { tap: function() {} },
+      canceled: { tap: function() {} },
+      error: { tap: function() {} },
+      issues: { tap: function() {} },
+    };
   }
 }
 
-console.log('[patch-ajv] Done.');
+module.exports = ForkTsCheckerWebpackPlugin;
+module.exports.default = ForkTsCheckerWebpackPlugin;
+module.exports.ForkTsCheckerWebpackPlugin = ForkTsCheckerWebpackPlugin;
+`;
+
+// Ensure the directory exists
+fs.mkdirSync(path.dirname(entryPath), { recursive: true });
+fs.writeFileSync(entryPath, STUB, 'utf8');
+console.log('[patch-fork-ts] ✓ Replaced ' + pkgMain + ' with no-op stub.');
+console.log('[patch-fork-ts] Done.');
