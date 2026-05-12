@@ -42,7 +42,7 @@ export default function Home() {
       <Header profile={profile} />
       <Hero profile={profile} />
       <AboutSection profile={profile} />
-      <BookFlip projects={projects} categories={categories} />
+      <BookFlip projects={projects} categories={categories} profile={profile} />
       <PortfolioGrid categories={categories} projects={projects} />
       <ContactSection profile={profile} />
       <Footer profile={profile} />

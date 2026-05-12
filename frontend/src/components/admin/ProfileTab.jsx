@@ -90,6 +90,88 @@ export default function ProfileTab() {
             {saving ? "Saving…" : "Save profile →"}
           </button>
         </div>
+
+        {/* Sketchbook AI cover regenerator */}
+        <SketchbookCoverPanel profile={profile} onUpdate={(p) => setProfile({ ...profile, ...p })} />
+      </div>
+    </div>
+  );
+}
+
+function SketchbookCoverPanel({ profile, onUpdate }) {
+  const [prompt, setPrompt] = useState(
+    profile.sketchbook_cover_prompt ||
+      "A photorealistic, high-resolution close-up of an open thick portfolio book on a wooden desk. A realistic hand is turning a page with a smooth page-curl. Matte white pages show graphic design layouts. Soft cinematic lighting, shallow depth of field."
+  );
+  const [busy, setBusy] = useState(false);
+
+  const coverFull = profile.sketchbook_cover_url
+    ? (profile.sketchbook_cover_url.startsWith("http")
+        ? profile.sketchbook_cover_url
+        : `${process.env.REACT_APP_BACKEND_URL}${profile.sketchbook_cover_url}`)
+    : "";
+
+  const regenerate = async () => {
+    if (!prompt.trim()) return toast.error("Please enter a prompt.");
+    setBusy(true);
+    try {
+      const { data } = await api.post("/admin/generate-image", { prompt, target: "sketchbook_cover" });
+      onUpdate({ sketchbook_cover_url: data.url, sketchbook_cover_prompt: prompt });
+      toast.success("New cover generated!");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Generation failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sm:col-span-2 border-t border-[#E1E3E8] pt-8 mt-4">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h4 className="font-display text-xl tracking-tight">Sketchbook AI cover</h4>
+          <p className="text-xs text-neutral-500 mt-1">
+            The cinematic photo that appears as the cover of the scroll-flip Sketchbook section.
+            Generated with Gemini Nano Banana.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 items-start">
+        <div className="sm:col-span-1">
+          <div className="aspect-[4/3] border border-[#E1E3E8] bg-[#F4F5F8] overflow-hidden">
+            {coverFull ? (
+              <img src={coverFull} alt="Sketchbook cover" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex items-center justify-center h-full text-xs text-neutral-400">
+                No cover yet
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="sm:col-span-2 space-y-3">
+          <label className="block">
+            <span className="text-[11px] tracking-[0.2em] uppercase text-neutral-500">Prompt</span>
+            <textarea
+              data-testid="cover-prompt"
+              rows={5}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              className="mt-2 w-full border border-[#E1E3E8] px-3 py-2.5 focus:outline-none focus:border-[#0A0B10] text-sm resize-none"
+            />
+          </label>
+          <button
+            onClick={regenerate}
+            disabled={busy}
+            data-testid="generate-cover-btn"
+            className="inline-flex items-center gap-2 bg-[#FF3333] text-white px-5 py-3 text-[11px] tracking-[0.2em] uppercase hover:bg-[#0A0B10] transition-colors disabled:opacity-50"
+          >
+            {busy ? "Generating… (~30–60s)" : "✦ Generate new cover"}
+          </button>
+          <p className="text-[11px] text-neutral-400">
+            Tip: describe lighting, materials, mood, and what's on the pages.
+          </p>
+        </div>
       </div>
     </div>
   );

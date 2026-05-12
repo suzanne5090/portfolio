@@ -14,10 +14,12 @@ from typing import List, Optional
 import bcrypt
 import jwt
 import re
+import base64
 import requests
 import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
@@ -74,6 +76,8 @@ class Profile(BaseModel):
     behance_url: str = ""
     linkedin_url: str = ""
     cv_url: str = ""
+    sketchbook_cover_url: str = ""
+    sketchbook_cover_prompt: str = ""
 
 class Category(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -450,8 +454,64 @@ async def root():
     return {"message": "Suzanne Cherian Portfolio API", "status": "ok"}
 
 
+# ---------- Routes: AI image generation ----------
+class ImageGenRequest(BaseModel):
+    prompt: str
+    target: str = "sketchbook_cover"  # which profile field to set
+
+@api_router.post("/admin/generate-image")
+async def generate_image(payload: ImageGenRequest, _=Depends(get_current_admin)):
+    """Generate an image with Gemini Nano Banana and store it as a static PNG."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    import uuid as _uuid
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"img-{_uuid.uuid4()}",
+        system_message="You are a professional concept image generator.",
+    )
+    chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+
+    try:
+        _text, images = await chat.send_message_multimodal_response(UserMessage(text=payload.prompt))
+    except Exception as e:
+        logging.exception("Image generation failed")
+        raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
+
+    if not images:
+        raise HTTPException(status_code=502, detail="Model returned no images")
+
+    img = images[0]
+    image_bytes = base64.b64decode(img["data"])
+    filename = f"{payload.target}-{int(datetime.now(timezone.utc).timestamp())}.png"
+    filepath = STATIC_DIR / filename
+    with open(filepath, "wb") as f:
+        f.write(image_bytes)
+
+    public_url = f"/api/static/{filename}"
+
+    # Persist on profile if applicable
+    if payload.target == "sketchbook_cover":
+        await db.profile.update_one(
+            {"_id": "singleton"},
+            {"$set": {"sketchbook_cover_url": public_url, "sketchbook_cover_prompt": payload.prompt}},
+            upsert=True,
+        )
+
+    return {"url": public_url, "filename": filename}
+
+
 # ---------- App wiring ----------
 app.include_router(api_router)
+
+# Serve generated images
+STATIC_DIR = ROOT_DIR / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/api/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.add_middleware(
     CORSMiddleware,
