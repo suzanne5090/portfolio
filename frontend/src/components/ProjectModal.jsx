@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { X, ExternalLink } from "lucide-react";
 import {
   toDriveImage,
@@ -94,6 +94,9 @@ export default function ProjectModal({ project, category, onClose }) {
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">{project?.title || "Project"}</DialogTitle>
+        <DialogDescription className="sr-only">
+          {project?.short_description || "Project details"}
+        </DialogDescription>
 
         {/* Close */}
         <button
